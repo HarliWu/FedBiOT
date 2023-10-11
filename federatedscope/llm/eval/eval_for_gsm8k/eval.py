@@ -14,6 +14,8 @@ from federatedscope.core.data.utils import download_url
 from federatedscope.llm.dataloader.dataloader import load_jsonl
 from federatedscope.llm.misc.fschat import FSChatBot
 
+from federatedscope.llm.dataset.llm_dataset import PROMPT_DICT
+
 transformers.logging.set_verbosity(40)
 
 ANS_RE = re.compile(r"#### (\-?[0-9\.\,]+)")
@@ -41,7 +43,7 @@ def is_correct(model_answer, answer):
     return model_answer == gt_answer
 
 
-def create_demo_text(n_shot=8, cot_flag=True):
+def create_demo_text(n_shot=8, cot_flag=True, q_idct='Q: ', a_idct='A: '):
     question, chain, answer = [], [], []
     question.append("There are 15 trees in the grove. "
                     "Grove workers will plant trees in the grove today. "
@@ -117,17 +119,31 @@ def create_demo_text(n_shot=8, cot_flag=True):
     demo_text = ""
     for i in index_list[:n_shot]:
         if cot_flag:
-            demo_text += "Q: " + question[i] + "\nA: " + chain[i] + " " + \
-                         ANSWER_TRIGGER + " " + answer[i] + ".\n\n"
+            # demo_text += "Q: " + question[i] + "\nA: " + chain[i] + " " + \
+            demo_text += q_idct + question[i] + "\n" + a_idct + chain[i] + \
+                         " " + ANSWER_TRIGGER + " " + answer[i] + ".\n\n"
         else:
             demo_text += "Question: " + question[i] + "\nAnswer: " + \
                          ANSWER_TRIGGER + " " + answer[i] + ".\n\n"
     return demo_text
 
 
-def build_prompt(input_text, n_shot, cot_flag):
-    demo = create_demo_text(n_shot, cot_flag)
-    input_text_prompt = demo + "Q: " + input_text + "\n" + "A:"
+def build_prompt(input_text, n_shot, cot_flag, demo_required=False):
+    demo = create_demo_text(n_shot,
+                            cot_flag,
+                            q_idct="### Instruction:\n",
+                            a_idct="\n### Response: ")
+    # Matching the test with the training
+    # input_text_prompt = PROMPT_DICT["prompt_input"].format_map({
+    #     "instruction": "Q:" + input_text, "input": demo
+    # }) + "A: "
+    input_text_prompt = PROMPT_DICT["prompt_no_input"].format_map(
+        {"instruction": input_text})
+    if demo_required:
+        i = input_text_prompt.find('###')
+        input_text_prompt = input_text_prompt[:i] + demo + \
+            input_text_prompt[i:]
+    # input_text_prompt = demo + "Q: " + input_text + "\n" + "A:"
     return input_text_prompt
 
 
@@ -174,6 +190,8 @@ def main():
     update_logger(init_cfg, clear_before_add=True)
     setup_seed(init_cfg.seed)
 
+    init_cfg.freeze()
+
     # load your finetuned model (saved as xxx.ckpt)
     #    in yaml file federate.save_to
     fschatbot = FSChatBot(init_cfg)
@@ -189,8 +207,12 @@ def main():
 
     list_data_dict = load_jsonl(fp, instruction='question', output='answer')
 
+    # Print result to a text file
+    results_display = open(os.path.join(init_cfg.outdir, 'test_results.txt'),
+                           'w')
     answers = []
-    for sample in tqdm(list_data_dict):
+    testset = tqdm(list_data_dict)
+    for sample in testset:
         input_text = build_prompt(sample['instruction'], N_SHOT, COT_FLAG)
         generate_kwargs = dict(max_new_tokens=256, top_p=0.95, temperature=0.8)
         model_completion = fschatbot.generate(input_text, generate_kwargs)
@@ -199,15 +221,29 @@ def main():
         answers.append(is_cor)
         if DEBUG:
             print(f'Full input_text:\n{input_text}\n\n')
-        print(f'Question: {sample["instruction"]}\n\n'
-              f'Answers: {extract_answer_from_output(sample["output"])}\n\n'
-              f'Model Answers: {model_answer}\n\n'
-              f'Model Completion: {model_completion}\n\n'
-              f'Is correct: {is_cor}\n\n')
+        results_display.write(
+            f'Question {len(answers)}: {sample["instruction"]}\n\n'
+            f'Answers: {extract_answer_from_output(sample["output"])}\n\n'
+            f'Model Answers: {model_answer}\n\n'
+            f'Model Completion: {model_completion}\n\n'
+            f'Is correct: {is_cor}\n\n')
+        results_display.write('==========================\n\n')
+        results_display.flush()
+        testset.set_postfix({
+            'correct': sum(answers),
+            'rate': '{:.2f}%'.format(float(sum(answers)) / len(answers) * 100)
+        })
+        # print(f'Question: {sample["instruction"]}\n\n'
+        #       f'Answers: {extract_answer_from_output(sample["output"])}\n\n'
+        #       f'Model Answers: {model_answer}\n\n'
+        #       f'Model Completion: {model_completion}\n\n'
+        #       f'Is correct: {is_cor}\n\n')
 
-        print(f'Num of total question: {len(answers)}, '
-              f'correct num: {sum(answers)}, '
-              f'correct rate: {float(sum(answers))/len(answers)}.')
+    results_display.write(f'Num of total question: {len(answers)}, '
+                          f'correct num: {sum(answers)}, '
+                          f'correct rate: {float(sum(answers))/len(answers)}.')
+    results_display.flush()
+    results_display.close()
 
 
 if __name__ == "__main__":

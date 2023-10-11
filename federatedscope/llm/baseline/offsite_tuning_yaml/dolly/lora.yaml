@@ -1,0 +1,50 @@
+use_gpu: True
+device: 1
+early_stop:
+  patience: 0
+federate:
+  mode: standalone
+  client_num: 8
+  total_round_num: 1000
+  save_to: "checkpoints/llama.dolly-meta.lora.ckpt"
+  save_freq: 500
+  share_local_model: True
+  online_aggr: False
+data:
+  root: data/
+  type: 'dolly-15k@llm'
+  splits: [0.99, 0.0, 0.01]
+  splitter: 'meta'
+llm:
+  tok_len: 650
+  chat:
+    max_len: 1000
+  offsite_tuning:
+    use: False
+  adapter:
+    use: True
+    args: [ { 'adapter_package': 'peft', 'adapter_method': 'lora', 'r': 8, 'lora_alpha': 32, 'lora_dropout': 0.1 } ]
+dataloader:
+  batch_size: 1
+model:
+  type: 'decapoda-research/llama-7b-hf@huggingface_llm'
+train:
+  local_update_steps: 30
+  batch_or_epoch: batch
+  optimizer:
+    lr: 0.005
+  is_enable_half: True
+criterion:
+  type: CrossEntropyLoss
+trainer:
+  type: llmtrainer
+eval:
+  freq: 100
+  metrics: ['loss']
+  best_res_update_round_wise_key: 'test_loss'
+  report: ['weighted_avg', 'avg', 'raw']
+expname: "llm-baselines/llama-7b_dolly-meta_lora"
+# wandb:
+#   use: True
+#   name_user: 'harliwu'
+#   name_project: 'llama-7b_dolly-meta_lora'

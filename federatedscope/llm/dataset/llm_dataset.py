@@ -44,7 +44,7 @@ class LLMDataset(Dataset):
                  prompt_no_input=PROMPT_DICT["prompt_no_input"]):
         super(LLMDataset, self).__init__()
 
-        sources = [
+        self.sources = [
             prompt_input.format_map(example) if example.get("input", "") != ""
             else prompt_no_input.format_map(example)
             for example in list_data_dict
@@ -53,11 +53,18 @@ class LLMDataset(Dataset):
             f"{example['output']}{tokenizer.eos_token}"
             for example in list_data_dict
         ]
+        self.llm_generated_targets = [
+            f"{example['llm_output']}"
+            if example.get("llm_output", "") != "" else None
+            for example in list_data_dict
+        ]
 
-        data_dict = self.preprocess(sources, targets, tokenizer)
+        data_dict = self.preprocess(self.sources, targets, tokenizer)
 
         self.input_ids = data_dict["input_ids"]
         self.labels = data_dict["labels"]
+
+        self.tokenizer = tokenizer
 
         categories = [
             example['category'] if 'category' in example else None
@@ -110,3 +117,15 @@ class LLMDataset(Dataset):
         return dict(input_ids=self.input_ids[i],
                     labels=self.labels[i],
                     categories=self.categories[i])
+
+    def overwrite_by_llm(self, i):
+        source = self.sources[i]
+        llm_answer = self.llm_generated_targets[i]
+
+        if llm_answer is None or llm_answer == "":
+            return
+
+        llm_result_tknz = \
+            self.preprocess([source], [llm_answer], self.tokenizer)
+        self.input_ids[i], self.labels[i] = \
+            llm_result_tknz['input_ids'][0], llm_result_tknz['labels'][0]

@@ -1,0 +1,47 @@
+use_gpu: True
+device: 3
+early_stop:
+  patience: 0
+federate:
+  mode: standalone
+  client_num: 9
+  total_round_num: 60
+  save_to: "checkpoints/llama.rosetta.ours_adpt4.fl.lr50.ckpt"
+  save_freq: 3
+  share_local_model: True
+  online_aggr: False
+data:
+  root: data/
+  type: 'rosetta_alpaca@llm'
+  splits: [0.89,0.1,0.01]
+  splitter: 'meta'
+llm:
+  tok_len: 650
+  chat:
+    max_len: 1000
+  offsite_tuning:
+    use: True
+    emu_r: 28
+    strategy: 'noname'
+    kwargs: [ { 'adapter_size': 4 }]
+dataloader:
+  batch_size: 1
+model:
+  type: 'decapoda-research/llama-7b-hf@huggingface_llm'
+train:
+  local_update_steps: 30
+  batch_or_epoch: batch
+  optimizer:
+    lr: 0.005
+  is_enable_half: True
+criterion:
+  type: CrossEntropyLoss
+trainer:
+  type: llmtrainer
+eval:
+  freq: 3
+  metrics: ['loss']
+  best_res_update_round_wise_key: 'val_loss'
+  report: ['weighted_avg', 'avg', 'raw']
+  count_flops: False
+expname: "upper_bound_fl/llama-7b_rosetta_ours_adpt4"

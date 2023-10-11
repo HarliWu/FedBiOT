@@ -5,10 +5,14 @@ import random
 import logging
 import torch
 import transformers
+from transformers import GenerationConfig
+from tqdm import tqdm
 
 from dataclasses import dataclass
-from federatedscope.llm.dataset.llm_dataset import DefaultToken, LLMDataset
+from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
+    LLMDataset, PROMPT_DICT
 from federatedscope.core.data.utils import download_url
+from federatedscope.llm.model.model_builder import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +39,77 @@ class LLMDataCollator(object):
             labels=labels,
             attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
         )
+
+
+class Predictor:
+    """Generate the output from the original LLM model"""
+    def __init__(self, config, tokenizer, generate_kwargs=None):
+        self.device = f'cuda:{config.device}'
+
+        # self.model = get_llm(config).to(self.device)
+        self.add_special_tokens = True
+        self.tokenizer = tokenizer
+
+        if generate_kwargs is not None:
+            self.generate_kwargs = generate_kwargs
+        else:
+            self.generate_kwargs = {
+                'max_new_tokens': config.llm.chat.max_len,
+                'num_beams': 4,
+                'no_repeat_ngram_size': 2,
+                'early_stopping': True,
+                'temperature': 0.0
+            }
+
+    def __call__(self, input_text, model):
+        input_ids = self.tokenizer.encode(input_text, add_special_tokens=False)
+        input_ids = torch.tensor(input_ids).long()
+        input_ids = input_ids.unsqueeze(0).to(self.device)
+        response = model.generate(input_ids=input_ids, **self.generate_kwargs)
+        response_tokens = \
+            self.tokenizer.decode(response[0][input_ids.shape[1]:],
+                                  skip_special_tokens=True)
+        if response_tokens == "":
+            print('INPUT:', input_text)
+            print(len(input_text))
+            print('===============================\n\n')
+        return response_tokens
+
+
+def create_datasett_with_llm_generated(
+        path: str,
+        config,
+        list_data_dict,
+        predictor: Predictor,
+        prompt_input=PROMPT_DICT["prompt_input"],
+        prompt_no_input=PROMPT_DICT["prompt_no_input"]):
+    model_name = config.model.type.split('@')[0].split('/')[-1]
+    assert path.endswith('.json') and f'{model_name}_generated' in path
+    print(path)
+    if os.path.exists(path):
+        logger.info('File with LLM-generated text exists, use existing file.')
+        return
+    model = get_llm(config).to(predictor.device)
+    if config.train.is_enable_half:
+        model.half()
+    no_pred_inst = []
+    for example in list_data_dict:
+        if example.get("instruction", "") in no_pred_inst:
+            continue
+        if example.get("input", "") != "":
+            input_text = prompt_input.format_map(example)
+        else:
+            input_text = prompt_no_input.format_map(example)
+        llm_output = predictor(input_text, model)
+        if llm_output == "" or llm_output is None:
+            # Invalid prediction, append to no_pred_inst
+            # (no prediction instructions) and skip
+            no_pred_inst.append(example.get("instruction", ""))
+        else:
+            example['llm_output'] = predictor(input_text, model)
+    print(list_data_dict)
+    with open(path, 'w') as f:
+        f.write(json.dumps(list_data_dict, indent=4))
 
 
 def get_tokenizer(model_name, cache_dir, tok_len=128):
@@ -67,7 +142,8 @@ def load_json(file_path,
               instruction='instruction',
               input='input',
               output='output',
-              category='category'):
+              category='category',
+              **kwargs):
     # Format: [{'instruction': ..., 'input': ..., 'output':...}]
     with open(file_path, 'r', encoding="utf-8") as f:
         list_data_dict = json.load(f)
@@ -80,16 +156,19 @@ def load_json(file_path,
             input=item[input] if input in item else None,
             output=item[output] if output in item else None,
             category=item[category] if category in item else None)
+        for key, value in kwargs.items():
+            new_item[key] = item[value]
         new_list_data_dict.append(new_item)
     return new_list_data_dict
 
 
 def load_jsonl(file_path,
+               is_gzip=False,
                instruction='instruction',
                input='input',
                output='output',
                category='category',
-               is_gzip=False):
+               **kwargs):
     # Format of each line:
     # {'instruction': ..., 'input': ..., 'output':...}
     list_data_dict = []
@@ -102,6 +181,8 @@ def load_jsonl(file_path,
                 input=item[input] if input in item else None,
                 output=item[output] if output in item else None,
                 category=item[category] if category in item else None)
+            for key, value in kwargs.items():
+                new_item[key] = item[value]
             item = new_item
             list_data_dict.append(item)
     return list_data_dict
@@ -167,7 +248,6 @@ def load_llm_dataset(config=None, **kwargs):
                 list_data_dict[i]['output'].replace('####', 'The answer is')
         dataset = LLMDataset(list_data_dict, tokenizer)
     elif dataset_name.lower() == 'code_search_net':
-        from tqdm import tqdm
         from federatedscope.llm.dataset.code_search_net import \
             CSN_FILE_NUM_DICT
 
@@ -222,14 +302,79 @@ def load_llm_dataset(config=None, **kwargs):
                                    input='input',
                                    output='output',
                                    category='input')
+        if config.llm.offsite_tuning.llm_generated.use:
+            model_type = model_name.split('/')[-1]
+            fp = os.path.join(config.data.root,
+                              f'rosetta_alpaca_{model_type}_generated.json')
+            create_datasett_with_llm_generated(
+                path=fp,
+                config=config,
+                list_data_dict=list_data_dict,
+                predictor=Predictor(
+                    config,
+                    tokenizer,
+                    # generate_kwargs=dict(
+                    #     max_new_tokens=128,
+                    #     generation_config=GenerationConfig(
+                    #         temperature=0.1,
+                    #         top_k=40,
+                    #         top_p=0.75,
+                    #         do_sample=True,
+                    #         num_return_sequences=1,
+                    # ))
+                ))
+            list_data_dict = load_json(fp,
+                                       instruction='instruction',
+                                       input='input',
+                                       output='output',
+                                       llm_output='llm_output',
+                                       category='input')
+
         # Remove 'x86-64 Assembl' if splitter is `meta` due to the number of
         # samples is too small.
         if config.data.splitter == 'meta':
             list_data_dict = [
                 i for i in list_data_dict if i['category'] != 'X86-64 Assembly'
             ]
+        # Manually remove \u00a0
+        for i in range(len(list_data_dict)):
+            list_data_dict[i]['output'] = \
+                list_data_dict[i]['output'].replace('\u00a0', '')
+            list_data_dict[i]['instruction'] = \
+                list_data_dict[i]['instruction'].replace('\u00a0', '')
         dataset = LLMDataset(list_data_dict, tokenizer)
+    elif dataset_name.lower() == 'offsite_tuning':
+        # list of dataset
+        dataset_links = {
+            'OpenBookQA': None,
+            'PIQA': None,
+            'ARC': None,
+            'HellaSwag': None,
+            'SciQ': None,
+            'WebQuestions': None,
+            'RACE': None
+        }
+        pass
     else:
         raise ValueError(f'Not support data type {dataset_name}.')
 
     return dataset, config
+
+
+if __name__ == '__main__':
+    from federatedscope.core.configs.config import global_cfg
+    from federatedscope.core.cmd_args import parse_args, parse_client_cfg
+    from federatedscope.core.auxiliaries.utils import setup_seed
+    from federatedscope.core.auxiliaries.logging import update_logger
+
+    init_cfg = global_cfg.clone()
+    args = parse_args()
+    if args.cfg_file:
+        init_cfg.merge_from_file(args.cfg_file)
+    cfg_opt, client_cfg_opt = parse_client_cfg(args.opts)
+    init_cfg.merge_from_list(cfg_opt)
+
+    update_logger(init_cfg, clear_before_add=True)
+    setup_seed(init_cfg.seed)
+
+    load_llm_dataset(init_cfg)

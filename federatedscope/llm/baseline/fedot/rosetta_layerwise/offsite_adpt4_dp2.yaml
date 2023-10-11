@@ -1,0 +1,57 @@
+use_gpu: True
+device: 0
+early_stop:
+  patience: 0
+federate:
+  mode: standalone
+  client_num: 9
+  total_round_num: 1000
+  save_to: "checkpoints/llama.rosetta.offsite_tuning_adpt4_dp2.lr5.fedot.ckpt"
+  save_freq: 100
+  share_local_model: True
+  online_aggr: False
+data:
+  root: data/
+  type: 'rosetta_alpaca@llm'
+  splits: [0.89,0.1,0.01]
+  splitter: 'meta'
+llm:
+  tok_len: 650
+  chat:
+    max_len: 1000
+  offsite_tuning:
+    use: True
+    save_full_model: True
+    emu_l: 0
+    emu_r: 28
+    strategy: 'drop_layer'
+    kwargs: [ { 'drop_ratio': 0.2 }]
+    emu_align:
+      use: True
+      initial_only: False
+      sim_loss: 'l2'
+      layerwise_distill: True
+      train:
+        local_update_steps: 10
+        initial_update_rounds: 50
+dataloader:
+  batch_size: 1
+model:
+  type: 'decapoda-research/llama-7b-hf@huggingface_llm'
+train:
+  local_update_steps: 30
+  batch_or_epoch: batch
+  optimizer:
+    lr: 0.0005
+  is_enable_half: True
+criterion:
+  type: CrossEntropyLoss
+trainer:
+  type: llmtrainer
+eval:
+  freq: 100
+  metrics: ['loss']
+  best_res_update_round_wise_key: 'test_loss'
+  report: ['weighted_avg', 'avg', 'raw']
+  count_flops: False
+expname: "fedot/llama-7b_rosetta_offsite_layerwise_adpt4_dp2"

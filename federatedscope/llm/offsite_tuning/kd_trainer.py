@@ -1,5 +1,7 @@
 import torch
 import logging
+import copy
+
 from federatedscope.llm.trainer.trainer import LLMTrainer
 from federatedscope.core.trainers.context import CtxVar
 from federatedscope.core.trainers.enums import LIFECYCLE
@@ -7,30 +9,61 @@ from federatedscope.core.trainers.enums import LIFECYCLE
 logger = logging.getLogger(__name__)
 
 
-def get_kd_loss(raw_model, adap_model):
+def l2_norm(output_student_float, output_teacher_float):
+    std = output_teacher_float.pow(2).mean().sqrt()
+    return (output_teacher_float - output_student_float).div(std).pow(2).mean()
+
+
+def get_kd_loss(loss_fn, raw_model, adap_model, layerwise_distill=False):
     """
     This function is borrowed from offsite-tuning:
     https://github.com/mit-han-lab/offsite-tuning/blob/main/offsite_tuning
     /utils.py
     """
+    layerwise_distill = (layerwise_distill
+                         and hasattr(adap_model, 'teacher_model_mapping'))
     kwargs = adap_model.student_l.input_kwargs
     args = adap_model.student_l.input_args
     output_teacher = args[0]
+    output_student = copy.deepcopy(args[0])
     args = list(args[1:])
     args = tuple(args)
 
+    kd_loss = 0.0
     with torch.no_grad():
         raw_model.teacher.eval()
-        for teacher_layer in raw_model.teacher:
+
+        if layerwise_distill:
+            student_teacher_map = adap_model.teacher_model_mapping
+            teacher_outputs = [0] * len(student_teacher_map)
+
+        for i, teacher_layer in enumerate(raw_model.teacher):
             output_teacher = teacher_layer(output_teacher, *args, **kwargs)
             if isinstance(output_teacher, tuple):
                 output_teacher = output_teacher[0]
+            if layerwise_distill and (i in student_teacher_map):
+                # map with the teacher's model and accumulate kd_loss
+                teacher_outputs[student_teacher_map.index(
+                    i)] = output_teacher.float()
 
-    output_student = adap_model.student_r.cached_output.float()
-    output_teacher = output_teacher.float()
+    if layerwise_distill:
+        adap_model_training_state = adap_model.student.training
+        adap_model.student.eval()
 
-    std = output_teacher.pow(2).mean().sqrt()
-    kd_loss = (output_teacher - output_student).div(std).pow(2).mean()
+        for layer, output_teacher_float in zip(adap_model.student,
+                                               teacher_outputs):
+            output_student = layer(output_student, *args, **kwargs)
+            if isinstance(output_student, tuple):
+                output_student = output_student[0]
+            output_student_float = output_student.float()
+            kd_loss += loss_fn(output_student_float, output_teacher_float)
+
+        adap_model.student.train(mode=adap_model_training_state)
+    else:
+        output_student_float = adap_model.student_r.cached_output.float()
+        output_teacher_float = output_teacher.float()
+        kd_loss = loss_fn(output_student_float, output_teacher_float)
+
     return kd_loss
 
 
@@ -73,7 +106,8 @@ class KDTrainer(LLMTrainer):
                             attention_mask=attention_mask)
 
         logits = outputs.logits
-        kd_loss = self.kd_loss_weight * get_kd_loss(ctx.raw_model, ctx.model)
+        kd_loss = self.kd_loss_weight * get_kd_loss(l2_norm, ctx.raw_model,
+                                                    ctx.model)
         lm_loss = self.lm_loss_weight * outputs.loss
         loss = kd_loss + lm_loss
 

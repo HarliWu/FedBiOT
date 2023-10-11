@@ -60,7 +60,6 @@ def main():
     # load your finetuned model (saved as xxx.ckpt)
     #    in yaml file federate.save_to
     fschatbot = FSChatBot(init_cfg)
-    out_file = f'{init_cfg.federate.save_to}_humaneval_answer.jsonl'
 
     # Get test file
     fp = os.path.join(init_cfg.data.root, 'HumanEval.jsonl.gz')
@@ -76,40 +75,54 @@ def main():
                                 output='test',
                                 is_gzip=True)
 
-    answers = []
-    for sample in tqdm(list_data_dict):
-        input_text = sample['instruction']
-        generation_config = GenerationConfig(
-            temperature=0.1,
-            top_k=40,
-            top_p=0.75,
-            do_sample=True,
-            num_return_sequences=NUM_ANSWERS_PER_QUESTION,
-        )
-        generate_kwargs = dict(
-            generation_config=generation_config,
-            max_new_tokens=128,
-        )
+    while True:
         try:
-            model_completions = fschatbot.generate(input_text, generate_kwargs)
-        except torch.cuda.OutOfMemoryError as error:
-            print(error)
-            model_completions = ['' for _ in range(NUM_ANSWERS_PER_QUESTION)]
+            out_file = os.path.join(
+                init_cfg.outdir, f'{fschatbot.curpfx}humaneval_answer.jsonl')
+            answers = []
+            for sample in tqdm(list_data_dict):
+                input_text = sample['instruction']
+                generation_config = GenerationConfig(
+                    temperature=0.1,
+                    top_k=40,
+                    top_p=0.75,
+                    do_sample=True,
+                    num_return_sequences=NUM_ANSWERS_PER_QUESTION,
+                )
+                generate_kwargs = dict(
+                    generation_config=generation_config,
+                    max_new_tokens=128,
+                )
+                try:
+                    model_completions = fschatbot.generate(
+                        input_text, generate_kwargs)
+                except torch.cuda.OutOfMemoryError as error:
+                    print(error)
+                    model_completions = [
+                        '' for _ in range(NUM_ANSWERS_PER_QUESTION)
+                    ]
 
-        for i, completion in enumerate(model_completions):
-            completion = clean_answer(completion)
-            answers.append(
-                dict(task_id=sample['category'], completion=completion))
-            if DEBUG:
-                print(f"task_id: {sample['category']},\n"
-                      f"completion {i + 1}:\n{completion}\n\n")
+                for i, completion in enumerate(model_completions):
+                    completion = clean_answer(completion)
+                    answers.append(
+                        dict(task_id=sample['category'],
+                             completion=completion))
+                    if DEBUG:
+                        print(f"task_id: {sample['category']},\n"
+                              f"completion {i + 1}:\n{completion}\n\n")
 
-    # Save as samples.jsonl for eval pass@k score
-    # Run `evaluate_functional_correctness samples.jsonl`
-    with open(out_file, 'w') as f:
-        for answer in answers:
-            json_str = json.dumps(answer)
-            f.write(json_str + '\n')
+            # Save as samples.jsonl for eval pass@k score
+            # Run `evaluate_functional_correctness samples.jsonl`
+            with open(out_file, 'w') as f:
+                for answer in answers:
+                    json_str = json.dumps(answer)
+                    f.write(json_str + '\n')
+
+            print('load the next model...')
+            fschatbot.next_model()
+        except Exception as err:
+            print(f'{err}, so finished all evaluations....')
+            break
 
 
 if __name__ == "__main__":

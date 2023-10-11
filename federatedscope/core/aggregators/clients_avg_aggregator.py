@@ -44,7 +44,14 @@ class ClientsAvgAggregator(Aggregator):
     def save_model(self, path, cur_round=-1):
         assert self.model is not None
 
-        ckpt = {'cur_round': cur_round, 'model': self.model.state_dict()}
+        if self.cfg.llm.offsite_tuning.use and \
+                self.cfg.llm.offsite_tuning.save_full_model:
+            ckpt = {
+                'cur_round': cur_round,
+                'model': self.model.state_dict(return_trainable=False)
+            }
+        else:
+            ckpt = {'cur_round': cur_round, 'model': self.model.state_dict()}
         torch.save(ckpt, path)
 
     def load_model(self, path):

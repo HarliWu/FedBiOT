@@ -1,0 +1,29 @@
+use_gpu: True
+device: 0
+early_stop:
+  patience: 10
+model:
+  type: 'decapoda-research/llama-7b-hf@huggingface_llm'
+criterion:
+  type: CrossEntropyLoss
+trainer:
+  type: llmtrainer
+llm:
+  tok_len: 1000
+  chat:
+    max_len: 1000
+  offsite_tuning:
+    use: True
+    emu_l: 2
+    emu_r: 30
+    strategy: 'drop_layer'
+    kwargs: [ { 'drop_ratio': 0.0 }]
+train:
+  is_enable_half: True
+expname: "central-llm-baselines/raw-llama"
+# expname: "central-llm-baselines/raw-llama_gsm8k_10"
+# expname: "central-llm-baselines/raw-llama_gsm8k_20"
+# expname: "central-llm-baselines/raw-llama_gsm8k_25"
+# expname: "central-llm-baselines/raw-llama_gsm8k_30"
+# expname: "central-llm-baselines/raw-llama_dolly"
+# expname: "central-llm-baselines/raw-llama_rosetta"

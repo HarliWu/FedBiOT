@@ -33,7 +33,8 @@ class OffsiteTuningServer(Server):
         logger.info('Server: Generating emulator and adapter...')
         adap_model = generate_adap_model(model, config.llm.offsite_tuning)
         # Emulator alignment
-        if config.llm.offsite_tuning.emu_align.use:
+        if config.llm.offsite_tuning.emu_align.use and \
+                config.llm.offsite_tuning.emu_align.initial_only:
             adap_model = align_student_with_teacher(raw_model=model,
                                                     adap_model=adap_model,
                                                     cfg=config,
@@ -97,9 +98,10 @@ class OffsiteTuningServer(Server):
         # Update the raw model with the new adapters
         if self._cfg.llm.offsite_tuning.eval_type == 'full':
             self.model.to('cpu')
-            new_raw_model_state_dict = self.raw_model.state_dict()
-            for key, value in zip(self.raw_model.state_dict().keys(),
-                                  self.model.state_dict().values()):
+            new_raw_model_state_dict = self.raw_model.state_dict(
+                return_trainable=False)
+            for key, value in zip(self.raw_model.adapter.state_dict().keys(),
+                                  self.model.adapter.state_dict().values()):
                 new_raw_model_state_dict[key] = value
             self.raw_model_trainer.update(new_raw_model_state_dict,
                                           strict=False)

@@ -107,10 +107,17 @@ def get_client_cls(cfg):
         client_class = add_atk_method_to_Client_GradAscent(client_class)
 
     if cfg.llm.offsite_tuning.use:
-        from federatedscope.llm.offsite_tuning.client import \
-            OffsiteTuningClient
         logger.info("=========== Using offsite_tuning ===========")
-        return OffsiteTuningClient
+
+        if cfg.llm.offsite_tuning.emu_align.use is False or \
+                cfg.llm.offsite_tuning.emu_align.initial_only:
+            from federatedscope.llm.offsite_tuning.client import \
+                OffsiteTuningClient
+            return OffsiteTuningClient
+        else:
+            from federatedscope.llm.offsite_tuning.fedot import \
+                FedOT_Client
+            return FedOT_Client
 
     return client_class
 
@@ -215,9 +222,16 @@ def get_server_cls(cfg):
         server_class = Server
 
     if cfg.llm.offsite_tuning.use:
-        from federatedscope.llm.offsite_tuning.server import \
-            OffsiteTuningServer
         logger.info("=========== Using offsite_tuning ===========")
-        return OffsiteTuningServer
+
+        if cfg.llm.offsite_tuning.emu_align.use is False or \
+                cfg.llm.offsite_tuning.emu_align.initial_only:
+            from federatedscope.llm.offsite_tuning.server import \
+                OffsiteTuningServer
+            return OffsiteTuningServer
+        else:
+            from federatedscope.llm.offsite_tuning.fedot import \
+                FedOT_Server
+            return FedOT_Server
 
     return server_class

@@ -49,9 +49,16 @@ def extend_llm_cfg(cfg):
     # Used in `eval`
     cfg.llm.offsite_tuning.eval_type = 'emu'  # Choose one of `[emu, full]`
 
+    # Used in `aggregator`
+    cfg.llm.offsite_tuning.save_full_model = False
+
     # Emulator alignment will use dataset in Server
     cfg.llm.offsite_tuning.emu_align = CN()
     cfg.llm.offsite_tuning.emu_align.use = False
+    cfg.llm.offsite_tuning.emu_align.initial_only = True
+    cfg.llm.offsite_tuning.emu_align.sim_loss = 'cos'  # Choose one of
+    # `['cos', 'l2']`
+    cfg.llm.offsite_tuning.emu_align.layerwise_distill = False
     cfg.llm.offsite_tuning.emu_align.restore_from = ''
     cfg.llm.offsite_tuning.emu_align.save_to = ''
     cfg.llm.offsite_tuning.emu_align.exit_after_align = False
@@ -64,6 +71,7 @@ def extend_llm_cfg(cfg):
 
     cfg.llm.offsite_tuning.emu_align.train = CN()
     cfg.llm.offsite_tuning.emu_align.train.local_update_steps = 10
+    cfg.llm.offsite_tuning.emu_align.train.initial_update_rounds = 50
     cfg.llm.offsite_tuning.emu_align.train.batch_or_epoch = 'batch'
     cfg.llm.offsite_tuning.emu_align.train.lm_loss_weight = 0.1
     cfg.llm.offsite_tuning.emu_align.train.kd_loss_weight = 0.9
@@ -71,6 +79,11 @@ def extend_llm_cfg(cfg):
     cfg.llm.offsite_tuning.emu_align.train.optimizer = CN(new_allowed=True)
     cfg.llm.offsite_tuning.emu_align.train.optimizer.type = 'SGD'
     cfg.llm.offsite_tuning.emu_align.train.optimizer.lr = 0.01
+
+    # Overwrite clients' labels to LLM generated text
+    cfg.llm.offsite_tuning.llm_generated = CN()
+    cfg.llm.offsite_tuning.llm_generated.use = False
+    cfg.llm.offsite_tuning.llm_generated.ratio = 0.1
 
 
 def assert_llm_cfg(cfg):

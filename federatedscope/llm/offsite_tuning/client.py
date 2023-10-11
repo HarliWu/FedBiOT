@@ -28,6 +28,13 @@ class OffsiteTuningClient(Client):
         super(OffsiteTuningClient,
               self).__init__(ID, server_id, state, config, data, model, device,
                              strategy, *args, **kwargs)
+        if self._cfg.llm.offsite_tuning.llm_generated.use:
+            train_set = self.data['train'].dataset
+            overwrite_ratio = self._cfg.llm.offsite_tuning.llm_generated.ratio
+            for i in range(int(len(train_set) * overwrite_ratio)):
+                idx = train_set.dataset.indices[train_set.indices[i]]
+                train_set.dataset.dataset.overwrite_by_llm(idx, self._model)
+
         if self._cfg.federate.mode == 'standalone' and \
                 self._cfg.federate.share_local_model:
             # self.model is emulator_and_adapter, so we do nothing

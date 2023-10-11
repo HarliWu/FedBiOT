@@ -14,6 +14,8 @@ from federatedscope.llm.model.model_builder import get_llm
 from federatedscope.llm.dataset.llm_dataset import PROMPT_DICT
 from federatedscope.core.auxiliaries.utils import setup_seed
 from federatedscope.core.auxiliaries.logging import update_logger
+from federatedscope.llm.offsite_tuning.utils import \
+    wrap_offsite_tuning_for_eval
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +27,12 @@ class FSChatBot(object):
         self.device = f'cuda:{config.device}'
         self.add_special_tokens = True
 
-        self.prefix = ['']
+        num_ckpt = config.federate.total_round_num // config.federate.save_freq
+        self.prefix = ['final_'] + \
+                      [str(i*config.federate.save_freq) + '_'
+                       for i in range(num_ckpt, -1, -1)] + ['']
         self.dirname, self.filename = os.path.split(config.federate.save_to)
+        print(self.prefix)
         self.next_model()
 
     def next_model(self):
@@ -49,8 +55,6 @@ class FSChatBot(object):
         if self.curpfx is not None:
             ckpt_path = os.path.join(self.dirname, self.curpfx + self.filename)
             if self.config.llm.offsite_tuning.use:
-                from federatedscope.llm.offsite_tuning.utils import \
-                    wrap_offsite_tuning_for_eval
                 self.model = wrap_offsite_tuning_for_eval(
                     self.model, self.config, ckpt_path)
             else:
@@ -59,14 +63,21 @@ class FSChatBot(object):
                     self.model.load_state_dict(ckpt['model'])
                     logger.info(
                         f"Load with the model of Round {ckpt['cur_round']}")
+                    print(f"Load with the model of Round {ckpt['cur_round']}")
                 else:
                     self.model.load_state_dict(ckpt)
             logger.info(f'Model loads from the checkpoint {ckpt_path}')
+            print(f'Model loads from the checkpoint {ckpt_path}')
 
             # remove the prefix up to the current one
             self.prefix = self.prefix[self.prefix.index(self.curpfx) + 1:]
         elif len(self.prefix) > 1:
             logger.info("will use raw model.")
+            print("will use raw model.")
+            self.prefix = []
+            if self.config.llm.offsite_tuning.use:
+                self.model = wrap_offsite_tuning_for_eval(
+                    self.model, self.config)
         else:
             raise ValueError('No more model is able to us')
 
