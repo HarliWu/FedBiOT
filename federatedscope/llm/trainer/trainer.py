@@ -7,10 +7,10 @@ try:
 except:
     deepspeed = None
     DeepSpeedEngine = None
-    
+
 import accelerate
 from accelerate import Accelerator
-    
+
 from federatedscope.register import register_trainer
 from federatedscope.core.trainers import GeneralTorchTrainer
 from federatedscope.core.trainers.context import CtxVar, lifecycle
@@ -24,8 +24,13 @@ logger = logging.getLogger(__name__)
 
 
 class LLMTrainer(GeneralTorchTrainer):
-    def __init__(self, model, data, device, config, 
-                 only_for_eval=False, monitor=None):
+    def __init__(self,
+                 model,
+                 data,
+                 device,
+                 config,
+                 only_for_eval=False,
+                 monitor=None):
         self.grad_accum_step = max(config.llm.grad_accum_step,
                                    config.grad.grad_accum_count)
 
@@ -33,10 +38,9 @@ class LLMTrainer(GeneralTorchTrainer):
             self.accelerator = Accelerator(
                 gradient_accumulation_steps=self.grad_accum_step)
             device = self.accelerator.device
-            
-        super().__init__(model, data, device, 
-                         config, only_for_eval, monitor)
-    
+
+        super().__init__(model, data, device, config, only_for_eval, monitor)
+
     @lifecycle(LIFECYCLE.BATCH)
     def _run_batch(self, hooks_set, run_step=-1):
         if run_step == -1:
@@ -45,7 +49,7 @@ class LLMTrainer(GeneralTorchTrainer):
             self.ctx.cur_batch_i = CtxVar(batch_i, LIFECYCLE.BATCH)
 
             if hasattr(self, 'accelerator'):
-                # Build gradient accumulation upon accelerator 
+                # Build gradient accumulation upon accelerator
                 with self.accelerator.accumulate(self.ctx.model):
                     for hook in hooks_set["on_batch_start"]:
                         hook(self.ctx)
@@ -62,8 +66,8 @@ class LLMTrainer(GeneralTorchTrainer):
             else:
                 for idx in range(self.grad_accum_step):
                     self.ctx.cur_batch_i = CtxVar(
-                        batch_i*self.grad_accum_step + idx, LIFECYCLE.BATCH)
-                    
+                        batch_i * self.grad_accum_step + idx, LIFECYCLE.BATCH)
+
                     for hook in hooks_set["on_batch_start"]:
                         hook(self.ctx)
 
@@ -91,9 +95,9 @@ class LLMTrainer(GeneralTorchTrainer):
 
     def _hook_on_fit_start_init(self, ctx):
         if ctx.cfg.llm.accelerator.use:
-            # prepare model sharding 
+            # prepare model sharding
             ctx.model.sharding()
-            
+
             if ctx.cur_mode in [MODE.TRAIN, MODE.FINETUNE]:
                 # Initialize optimizer here to avoid the reuse of optimizers
                 # across different routines
@@ -102,18 +106,18 @@ class LLMTrainer(GeneralTorchTrainer):
                 ctx.optimizer.zero_grad()
                 ctx.scheduler = get_scheduler(
                     ctx.optimizer, **ctx.cfg[ctx.cur_mode].scheduler)
-            
+
             ctx.model, ctx.optimizer, ctx.train_loader, \
                 ctx.val_loader, ctx.test_loader, ctx.scheduler = \
-                    self.accelerator.prepare(
-                        ctx.model, 
-                        getattr(ctx, 'optimizer', None),
-                        getattr(ctx, 'train_loader', None),
-                        getattr(ctx, 'val_loader', None),
-                        getattr(ctx, 'test_loader', None),
-                        getattr(ctx, 'scheduler', None)
-                    )
-        
+                self.accelerator.prepare(
+                    ctx.model,
+                    getattr(ctx, 'optimizer', None),
+                    getattr(ctx, 'train_loader', None),
+                    getattr(ctx, 'val_loader', None),
+                    getattr(ctx, 'test_loader', None),
+                    getattr(ctx, 'scheduler', None)
+                )
+
         elif ctx.cfg.llm.deepspeed.use:
             # Enable deepspeed
             # TODO: save ctx.optimizer and ctx.scheduler
@@ -131,7 +135,7 @@ class LLMTrainer(GeneralTorchTrainer):
             ctx.device = ctx.model_engine.local_rank
             if ctx.cfg.train.is_enable_half:
                 ctx.fp16 = ctx.model_engine.fp16_enabled()
-        
+
         else:
             # prepare model and optimizer
             ctx.model.to(ctx.device)
@@ -141,7 +145,7 @@ class LLMTrainer(GeneralTorchTrainer):
                 ctx.optimizer = get_optimizer(
                     ctx.model, **ctx.cfg[ctx.cur_mode].optimizer)
                 ctx.scheduler = get_scheduler(
-                    ctx.optimizer, **ctx.cfg[ctx.cur_mode].scheduler) 
+                    ctx.optimizer, **ctx.cfg[ctx.cur_mode].scheduler)
 
         # prepare statistics
         ctx.loss_batch_total = CtxVar(0., LIFECYCLE.ROUTINE)
@@ -157,8 +161,8 @@ class LLMTrainer(GeneralTorchTrainer):
             attention_mask = ctx.data_batch['attention_mask']
             outputs = ctx.model(input_ids=input_ids,
                                 labels=labels,
-                                attention_mask=attention_mask) 
-        
+                                attention_mask=attention_mask)
+
         elif ctx.cfg.llm.deepspeed.use:
             input_ids = ctx.data_batch['input_ids'].to(ctx.device)
             labels = ctx.data_batch['labels'].to(ctx.device)
@@ -166,7 +170,7 @@ class LLMTrainer(GeneralTorchTrainer):
             outputs = ctx.model_engine(input_ids=input_ids,
                                        labels=labels,
                                        attention_mask=attention_mask)
-            
+
         else:
             input_ids = ctx.data_batch['input_ids'].to(ctx.device)
             labels = ctx.data_batch['labels'].to(ctx.device)
@@ -208,14 +212,14 @@ class LLMTrainer(GeneralTorchTrainer):
             ctx.model_engine.step()
             if ctx.scheduler is not None:
                 ctx.scheduler.step()
-        
+
         else:
-            (ctx.loss_task/self.grad_accum_step).backward()
+            (ctx.loss_task / self.grad_accum_step).backward()
 
             if (ctx.cur_batch_i + 1) % self.grad_accum_step == 0:
                 if ctx.grad_clip > 0:
-                    torch.nn.utils.clip_grad_norm_(
-                        ctx.model.parameters(), ctx.grad_clip)
+                    torch.nn.utils.clip_grad_norm_(ctx.model.parameters(),
+                                                   ctx.grad_clip)
                 ctx.optimizer.step()
                 if ctx.scheduler is not None:
                     ctx.scheduler.step()
