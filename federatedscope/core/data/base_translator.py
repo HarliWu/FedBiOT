@@ -130,7 +130,9 @@ class BaseDataTranslator:
         data_dict = {
             0: ClientData(self.global_cfg, train=train, val=val, test=test)
         }
+        logger.info(f'number of clients: {client_num}')
         for client_id in range(1, client_num + 1):
+            logger.info(client_id)
             if self.client_cfgs is not None:
                 client_cfg = self.global_cfg.clone()
                 client_cfg.merge_from_other_cfg(

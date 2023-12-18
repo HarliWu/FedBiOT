@@ -208,6 +208,7 @@ To make the federate fine-tuning efficient, we adopt a series of multi-card acce
 | --------------------- | ------------------------------------------------------------ | -------------------------------- | --------------------------------------------- |
 | torch.nn.DataParallel | [Link](https://pytorch.org/docs/stable/generated/torch.nn.DataParallel.html) | `cfg.train.data_para_dids=[0,1]` | -                                             |
 | DeepSpeed             | [Link](https://github.com/microsoft/DeepSpeed)               | Coming soon                      | Use `nvcc - V` to make sure `CUDA` installed. |
+| HF Accelerate         | [Link](https://huggingface.co/docs/accelerate/index)     | See below | - | 
 
 ## FAQ
 
@@ -218,3 +219,49 @@ To make the federate fine-tuning efficient, we adopt a series of multi-card acce
   - This is a problem with `transformers`, you can fix it in your local file. Replace `LLaMATokenizer` with `LlamaTokenizer` in `PATH_TO_DATA_ROOT/MODEL_REPO/snapshots/..../tokenizer_config.json`
 - `OutOfMemoryError: CUDA out of memory.`
   - Torch's garbage collection mechanism may not be timely resulting in OOM, please set `cfg.eval.count_flops` to `False`.
+
+## New: Support of HF Accelerate 
+
+**Note: This is the quick instrcution for *standalone* FS config.** The distributed FS using HF accelerate is coming soon. 
+
+To generate the config file, you should run 
+
+```bash
+accelerate config --config_file accelerator_config.yaml
+```
+
+and follow the intruction prompt. Finally, a file `accelerator_config.yaml` is created with the following format: 
+
+```yaml
+# Note: You can prepare this file manually 
+# This is an example that supports FederatedScope Standalone setting with multiple GPUs for fine-tuning (with the help of "model sharding") 
+
+compute_environment: LOCAL_MACHINE
+debug: false
+distributed_type: 'NO'
+downcast_bf16: 'no'
+gpu_ids: 2,3,4
+machine_rank: 0
+main_training_function: main
+mixed_precision: 'no'
+num_machines: 1
+num_processes: 1
+rdzv_backend: static
+same_network: true
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false
+use_cpu: false
+```
+
+To enable HF accelerate in the fine-tuning, run the following command: 
+
+```bash
+accelerate launch --config_file accelerator_config.yaml federatedscope/main.py --cfg [fs_config_file].yaml llm.accelerator.use True
+```
+
+For the evaluation on GSM8k, HumanEval, and HELM, run the following command 
+
+```bash
+CUDA_VISIBLE_DEVICES=1,2 python federatedscope/llm/eval/eval_for_[task]/eval.py --cfg [fs_config_file].yaml
+```

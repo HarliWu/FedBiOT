@@ -2,6 +2,7 @@ import sys
 import logging
 import torch
 import transformers
+from transformers import pipeline
 import os
 import gc
 
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class FSChatBot(object):
-    def __init__(self, config):
+    def __init__(self, config, use_raw=False):
         self.config = config
 
         self.device = f'cuda:{config.device}'
@@ -33,7 +34,37 @@ class FSChatBot(object):
                        for i in range(num_ckpt, -1, -1)] + ['']
         self.dirname, self.filename = os.path.split(config.federate.save_to)
         print(self.prefix)
-        self.next_model()
+        if use_raw:
+            self.use_raw_model()
+        else:
+            self.next_model()
+
+    def use_raw_model(self):
+        if hasattr(self, 'model'):
+            delattr(self, 'model')
+            gc.collect()
+            torch.cuda.empty_cache()
+            
+        model_name, _ = self.config.model.type.split('@')
+        self.tokenizer, _ = get_tokenizer(model_name, self.config.data.root,
+                                          self.config.llm.tok_len)
+        model_dtype = torch.float16 if self.config.train.is_enable_half else 'auto'
+        self.model = get_llm(self.config, device_map='auto', torch_dtype=model_dtype)
+        
+        logger.info("will use raw model.")
+        print("will use raw model.")
+        
+        if self.config.train.is_enable_half:
+            self.model.half()
+
+        self.model = self.model.to(self.device+1)
+        self.model = self.model.eval()
+        if torch.__version__ >= "2" and sys.platform != "win32":
+            self.model = torch.compile(self.model)
+
+        self.max_history_len = self.config.llm.chat.max_history_len
+        self.max_len = self.config.llm.chat.max_len
+        self.history = []
 
     def next_model(self):
         if hasattr(self, 'model'):
@@ -43,7 +74,8 @@ class FSChatBot(object):
         model_name, _ = self.config.model.type.split('@')
         self.tokenizer, _ = get_tokenizer(model_name, self.config.data.root,
                                           self.config.llm.tok_len)
-        self.model = get_llm(self.config)
+        model_dtype = torch.float16 if self.config.train.is_enable_half else 'auto'
+        self.model = get_llm(self.config, device_map='auto', torch_dtype=model_dtype)
 
         self.curpfx = None
         for pre in self.prefix:
@@ -71,6 +103,7 @@ class FSChatBot(object):
 
             # remove the prefix up to the current one
             self.prefix = self.prefix[self.prefix.index(self.curpfx) + 1:]
+        
         elif len(self.prefix) > 1:
             logger.info("will use raw model.")
             print("will use raw model.")
@@ -81,13 +114,18 @@ class FSChatBot(object):
         else:
             raise ValueError('No more model is able to us')
 
-        if self.config.train.is_enable_half:
-            self.model.half()
-
-        self.model = self.model.to(self.device)
         self.model = self.model.eval()
         if torch.__version__ >= "2" and sys.platform != "win32":
             self.model = torch.compile(self.model)
+
+        # Create the generation pipeline 
+        self.generation_pipe = pipeline(
+            'text-generation', 
+            model=self.model, 
+            tokenizer=self.tokenizer,
+            device_map='auto',
+            trust_remote_code='True'
+        )
 
         self.max_history_len = self.config.llm.chat.max_history_len
         self.max_len = self.config.llm.chat.max_len
@@ -115,7 +153,7 @@ class FSChatBot(object):
                                        num_beams=4,
                                        no_repeat_ngram_size=2,
                                        early_stopping=True,
-                                       temperature=0.0)
+                                       temperature=0.2)
 
         self.history.append(response[0].tolist())
         response_tokens = \
@@ -125,28 +163,39 @@ class FSChatBot(object):
 
     @torch.no_grad()
     def generate(self, input_text, generate_kwargs={}):
-        input_text = self.tokenizer(
-            input_text,
-            padding=False,
-            add_special_tokens=True,
-            return_tensors="pt",
-        )
-        input_ids = input_text.input_ids.to(self.device)
-        attention_mask = input_text.attention_mask.to(self.device)
+        if type(input_text) is str:
+            input_text_tokens = self.tokenizer(
+                input_text,
+                padding=False,
+                add_special_tokens=True,
+                return_tensors="pt",
+            )
+            input_ids = input_text_tokens.input_ids
+            attention_mask = input_text_tokens.attention_mask
 
-        output_ids = self.model.generate(input_ids=input_ids,
-                                         attention_mask=attention_mask,
-                                         **generate_kwargs)
-        response = []
-        for i in range(output_ids.shape[0]):
-            response.append(
-                self.tokenizer.decode(output_ids[i][input_ids.shape[1]:],
-                                      skip_special_tokens=True,
-                                      ignore_tokenization_space=True))
-
-        if len(response) > 1:
-            return response
-        return response[0]
+            output_ids = self.model.generate(input_ids=input_ids,
+                                             attention_mask=attention_mask,
+                                             **generate_kwargs)
+            
+            response = []
+            for i in range(output_ids.shape[0]):
+                response.append(
+                    self.tokenizer.decode(output_ids[i][input_ids.shape[1]:],
+                                        skip_special_tokens=True,
+                                        ignore_tokenization_space=True))
+            
+            if len(response) > 1:
+                return response
+            return response[0]
+        
+        else: 
+            response = self.generation_pipe(
+                input_text, return_full_text=False, **generate_kwargs
+            )
+            
+            if len(response) > 1:
+                return [ans['generated_text'] for ans in response]
+            return response[0]['generated_text']
 
     def clear(self):
         self.history = []

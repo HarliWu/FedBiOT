@@ -137,3 +137,9 @@ dmypy.json
 .idea/
 
 **/.DS_Store
+
+# No experiment results 
+/exp
+
+# No new scripts 
+/scripts_*

@@ -10,8 +10,16 @@ def extend_llm_cfg(cfg):
     # ---------------------------------------------------------------------- #
     # LLM related options
     # ---------------------------------------------------------------------- #
-    cfg.llm = CN()
+    cfg.llm = CN(new_allowed=True)
     cfg.llm.tok_len = 128
+    cfg.llm.retry_on_nan_loss = False
+    
+    # Training the reward model 
+    cfg.llm.reward_coeff = 0.1
+    
+    # use gradient accumulation to enlarge the batch size
+    # e.g., bsz = dataloader.batch_size * train.grad_accu_step
+    cfg.llm.grad_accum_step = 1
 
     # ---------------------------------------------------------------------- #
     # Cache for LLM
@@ -25,6 +33,20 @@ def extend_llm_cfg(cfg):
     cfg.llm.chat = CN()
     cfg.llm.chat.max_history_len = 10
     cfg.llm.chat.max_len = 100
+    
+    # ---------------------------------------------------------------------- #
+    # Deepspeed related options
+    # ---------------------------------------------------------------------- #
+    cfg.llm.deepspeed = CN()
+    cfg.llm.deepspeed.use = False
+    cfg.llm.deepspeed.ds_config = ''
+    
+    # ---------------------------------------------------------------------- #
+    # HuggingFace accelerator related options
+    # ---------------------------------------------------------------------- #
+    cfg.llm.accelerator = CN()
+    cfg.llm.accelerator.use = False
+    cfg.llm.accelerator.config = ''
 
     # ---------------------------------------------------------------------- #
     # Adapters for LLM

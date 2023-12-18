@@ -1,32 +1,35 @@
 from federatedscope.llm.model.adapter_builder import AdapterModel
 
 
-def get_model_from_huggingface(model_name, config):
+def get_model_from_huggingface(model_name, config, **kwargs):
     from transformers import AutoModelForCausalLM
 
-    kwargs = {}
     if len(config.llm.cache.model):
         kwargs['cache_dir'] = config.llm.cache.model
 
     return AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
 
 
-def get_model_from_modelscope(model_name, config):
-    from modelscope.models import Model
+def get_model_from_modelscope(model_name, config, **kwargs):
+    from modelscope import AutoModelForCausalLM
 
-    return Model.from_pretrained(model_name)
+    if len(config.llm.cache.model):
+        kwargs['cache_dir'] = config.llm.cache.model
+
+    return AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
 
 
-def get_llm(config):
+def get_llm(config, **kwargs):
     from federatedscope.llm.dataloader import get_tokenizer
 
     model_config = config.model
     model_name, model_hub = model_config.type.split('@')
     if model_hub == 'huggingface_llm':
         model = get_model_from_huggingface(model_name=model_name,
-                                           config=config)
+                                           config=config, **kwargs)
     elif model_hub == 'modelscope_llm':
-        model = get_model_from_modelscope(model_name=model_name, config=config)
+        model = get_model_from_modelscope(model_name=model_name, 
+                                          config=config, **kwargs)
     else:
         raise NotImplementedError(f'Not support LLM {model_name} in'
                                   f' {model_hub}.')
