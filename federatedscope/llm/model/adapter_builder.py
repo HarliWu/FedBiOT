@@ -10,15 +10,18 @@ from accelerate.utils import get_balanced_memory
 
 from transformers import (OPTForCausalLM, GPT2LMHeadModel, BloomForCausalLM,
                           LlamaForCausalLM)
+
 MODEL_UNIT = {
-    LlamaForCausalLM: ['LlamaDecoderLayer'], 
+    LlamaForCausalLM: ['LlamaDecoderLayer'],
     BloomForCausalLM: ['BloomBlock'],
-    GPT2LMHeadModel:  ['GPT2Block'], 
-    OPTForCausalLM:   ['OPTDecoderLayer']
+    GPT2LMHeadModel: ['GPT2Block'],
+    OPTForCausalLM: ['OPTDecoderLayer']
 }
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 def enable_adapter(model, package, adapter, **kwargs):
     adapter = adapter.lower()
@@ -151,7 +154,7 @@ class AdapterModel(nn.Module):
             self.model_unit = MODEL_UNIT[type(model)]
         except:
             self.model_unit = None
-        
+
         if use_adapter:
             adapter_package = kwargs.pop('adapter_package', 'peft')
             adapter_method = kwargs.pop('adapter_method', 'lora')
@@ -168,7 +171,7 @@ class AdapterModel(nn.Module):
         if isinstance(self.model, PeftModel) and disable_adapter:
             with self.model.disable_adapter():
                 return self.model(*args, **kwargs)
-        
+
         return self.model.forward(*args, **kwargs)
 
     def generate(self, disable_adapter=False, *args, **kwargs):
@@ -176,7 +179,7 @@ class AdapterModel(nn.Module):
             if isinstance(self.model, PeftModel) and disable_adapter:
                 with self.model.disable_adapter():
                     res = self.model.generate(*args, **kwargs)
-            
+
             else:
                 res = self.model.generate(*args, **kwargs)
         except RuntimeError as e:
@@ -248,29 +251,25 @@ class AdapterModel(nn.Module):
 
 
 class LLMDataParallel(nn.DataParallel):
-    def __init__(self, 
-                 adap_model, 
-                 device_ids=None, 
-                 output_device=None, 
-                 dim=0):
+    def __init__(self, adap_model, device_ids=None, output_device=None, dim=0):
         assert isinstance(adap_model, AdapterModel)
-        super().__init__(adap_model.model, 
-                         device_ids=device_ids, 
-                         output_device=output_device, 
+        super().__init__(adap_model.model,
+                         device_ids=device_ids,
+                         output_device=output_device,
                          dim=dim)
         self.model = adap_model
-    
+
     def get_input_embeddings(self):
         return self.model.get_input_embeddings()
-    
+
     def generate(self, *args, **kwargs):
         return self.model.generate(*args, **kwargs)
-    
+
     def state_dict(self, return_trainable=True, *args, **kwargs):
         return self.model.state_dict(return_trainable, *args, **kwargs)
-    
+
     def load_state_dict(self, state_dict, strict=False):
         return self.model.load_state_dict(state_dict, strict)
-    
+
     def save_model(self, path, state=0):
         self.model.save_model(path, state)

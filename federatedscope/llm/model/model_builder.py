@@ -26,10 +26,12 @@ def get_llm(config, **kwargs):
     model_name, model_hub = model_config.type.split('@')
     if model_hub == 'huggingface_llm':
         model = get_model_from_huggingface(model_name=model_name,
-                                           config=config, **kwargs)
+                                           config=config,
+                                           **kwargs)
     elif model_hub == 'modelscope_llm':
-        model = get_model_from_modelscope(model_name=model_name, 
-                                          config=config, **kwargs)
+        model = get_model_from_modelscope(model_name=model_name,
+                                          config=config,
+                                          **kwargs)
     else:
         raise NotImplementedError(f'Not support LLM {model_name} in'
                                   f' {model_hub}.')
