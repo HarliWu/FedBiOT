@@ -44,22 +44,23 @@ class FSChatBot(object):
             delattr(self, 'model')
             gc.collect()
             torch.cuda.empty_cache()
-            
+
         model_name, _ = self.config.model.type.split('@')
         self.tokenizer, _ = get_tokenizer(model_name, self.config.data.root,
                                           self.config.llm.tok_len)
-        model_dtype = torch.float16 if self.config.train.is_enable_half \
-                        else 'auto'
-        self.model = get_llm(self.config, device_map='auto', 
+        model_dtype = torch.float16 \
+            if self.config.train.is_enable_half else 'auto'
+        self.model = get_llm(self.config,
+                             device_map='auto',
                              torch_dtype=model_dtype)
-        
+
         logger.info("will use raw model.")
         print("will use raw model.")
-        
+
         if self.config.train.is_enable_half:
             self.model.half()
 
-        self.model = self.model.to(self.device+1)
+        self.model = self.model.to(self.device + 1)
         self.model = self.model.eval()
         if torch.__version__ >= "2" and sys.platform != "win32":
             self.model = torch.compile(self.model)
@@ -76,9 +77,10 @@ class FSChatBot(object):
         model_name, _ = self.config.model.type.split('@')
         self.tokenizer, _ = get_tokenizer(model_name, self.config.data.root,
                                           self.config.llm.tok_len)
-        model_dtype = torch.float16 if self.config.train.is_enable_half \
-                        else 'auto'
-        self.model = get_llm(self.config, device_map='auto', 
+        model_dtype = torch.float16 \
+            if self.config.train.is_enable_half else 'auto'
+        self.model = get_llm(self.config,
+                             device_map='auto',
                              torch_dtype=model_dtype)
 
         self.curpfx = None
@@ -107,7 +109,7 @@ class FSChatBot(object):
 
             # remove the prefix up to the current one
             self.prefix = self.prefix[self.prefix.index(self.curpfx) + 1:]
-        
+
         elif len(self.prefix) > 1:
             logger.info("will use raw model.")
             print("will use raw model.")
@@ -122,14 +124,12 @@ class FSChatBot(object):
         if torch.__version__ >= "2" and sys.platform != "win32":
             self.model = torch.compile(self.model)
 
-        # Create the generation pipeline 
-        self.generation_pipe = pipeline(
-            'text-generation', 
-            model=self.model, 
-            tokenizer=self.tokenizer,
-            device_map='auto',
-            trust_remote_code='True'
-        )
+        # Create the generation pipeline
+        self.generation_pipe = pipeline('text-generation',
+                                        model=self.model,
+                                        tokenizer=self.tokenizer,
+                                        device_map='auto',
+                                        trust_remote_code='True')
 
         self.max_history_len = self.config.llm.chat.max_history_len
         self.max_len = self.config.llm.chat.max_len
@@ -180,23 +180,23 @@ class FSChatBot(object):
             output_ids = self.model.generate(input_ids=input_ids,
                                              attention_mask=attention_mask,
                                              **generate_kwargs)
-            
+
             response = []
             for i in range(output_ids.shape[0]):
                 response.append(
                     self.tokenizer.decode(output_ids[i][input_ids.shape[1]:],
-                                        skip_special_tokens=True,
-                                        ignore_tokenization_space=True))
-            
+                                          skip_special_tokens=True,
+                                          ignore_tokenization_space=True))
+
             if len(response) > 1:
                 return response
             return response[0]
-        
-        else: 
-            response = self.generation_pipe(
-                input_text, return_full_text=False, **generate_kwargs
-            )
-            
+
+        else:
+            response = self.generation_pipe(input_text,
+                                            return_full_text=False,
+                                            **generate_kwargs)
+
             if len(response) > 1:
                 return [ans['generated_text'] for ans in response]
             return response[0]['generated_text']
