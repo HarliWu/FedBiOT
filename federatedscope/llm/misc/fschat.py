@@ -48,8 +48,10 @@ class FSChatBot(object):
         model_name, _ = self.config.model.type.split('@')
         self.tokenizer, _ = get_tokenizer(model_name, self.config.data.root,
                                           self.config.llm.tok_len)
-        model_dtype = torch.float16 if self.config.train.is_enable_half else 'auto'
-        self.model = get_llm(self.config, device_map='auto', torch_dtype=model_dtype)
+        model_dtype = torch.float16 if self.config.train.is_enable_half \
+                        else 'auto'
+        self.model = get_llm(self.config, device_map='auto', 
+                             torch_dtype=model_dtype)
         
         logger.info("will use raw model.")
         print("will use raw model.")
@@ -74,8 +76,10 @@ class FSChatBot(object):
         model_name, _ = self.config.model.type.split('@')
         self.tokenizer, _ = get_tokenizer(model_name, self.config.data.root,
                                           self.config.llm.tok_len)
-        model_dtype = torch.float16 if self.config.train.is_enable_half else 'auto'
-        self.model = get_llm(self.config, device_map='auto', torch_dtype=model_dtype)
+        model_dtype = torch.float16 if self.config.train.is_enable_half \
+                        else 'auto'
+        self.model = get_llm(self.config, device_map='auto', 
+                             torch_dtype=model_dtype)
 
         self.curpfx = None
         for pre in self.prefix:
