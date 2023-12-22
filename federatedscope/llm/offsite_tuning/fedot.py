@@ -71,7 +71,10 @@ class FedOT_Server(OffsiteTuningServer):
         # student_state_dict = copy.deepcopy(self.model.student.state_dict())
         # make the adapter untrainable and the emulator trainable
         convert_layers_train_state(self.model.adapter, is_trainable=False)
-        convert_layers_train_state(self.model.student, is_trainable=True)
+        convert_layers_train_state(
+            self.model.student,
+            name_pattern=self.model.trainable_param_name_pattern,
+            is_trainable=True)
         # Align the emulator
         self.emu_trainer.train()
         logger.info('Server finished the emulator alignment...')
@@ -88,7 +91,10 @@ class FedOT_Server(OffsiteTuningServer):
         #                 f'{torch.equal(value, new_student_state_dict[key])}')
 
         # make the adapter trainable and the emulator untrainable
-        convert_layers_train_state(self.model.adapter, is_trainable=True)
+        convert_layers_train_state(
+            self.model.adapter,
+            name_pattern=self.model.trainable_param_name_pattern,
+            is_trainable=True)
         convert_layers_train_state(self.model.student, is_trainable=False)
 
 

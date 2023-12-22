@@ -96,7 +96,7 @@ def main():
                 try:
                     model_completions = fschatbot.generate(
                         input_text, generate_kwargs)
-                except torch.cuda.OutOfMemoryError as error:
+                except torch.cuda.OutOfMemoryError() as error:
                     print(error)
                     model_completions = [
                         '' for _ in range(NUM_ANSWERS_PER_QUESTION)

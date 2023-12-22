@@ -1,4 +1,5 @@
 from federatedscope.llm.model.adapter_builder import AdapterModel
+import torch
 
 
 def get_model_from_huggingface(model_name, config, **kwargs):
@@ -6,6 +7,9 @@ def get_model_from_huggingface(model_name, config, **kwargs):
 
     if len(config.llm.cache.model):
         kwargs['cache_dir'] = config.llm.cache.model
+
+    if config.train.is_enable_half:
+        kwargs['torch_dtype'] = torch.bfloat16
 
     return AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
 

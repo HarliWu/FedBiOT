@@ -79,36 +79,48 @@ def get_layers(adapter_model):
     Modified from the official implementation:
     https://github.com/mit-han-lab/offsite-tuning/tree/main
     """
-    if isinstance(adapter_model.model, OPTForCausalLM):
-        layers = adapter_model.model.model.decoder.layers
-    elif isinstance(adapter_model.model, GPT2LMHeadModel):
-        layers = adapter_model.model.transformer.h
-    elif isinstance(adapter_model.model, BloomForCausalLM):
-        layers = adapter_model.model.transformer.h
-    elif isinstance(adapter_model.model, LlamaForCausalLM):
-        layers = adapter_model.model.model.layers
-    else:
-        # TODO: support more LLM
-        logger.warning(f'Model {type(adapter_model.model)} not support, '
-                       f'use default setting.')
-        layers = adapter_model.model.transformer.h
-    return layers
+    try:
+        return adapter_model.layers
+    except:
+        return adapter_model.model.transformer.h
+
+    # if isinstance(adapter_model.model, OPTForCausalLM):
+    #     layers = adapter_model.model.model.decoder.layers
+    # elif isinstance(adapter_model.model, GPT2LMHeadModel):
+    #     layers = adapter_model.model.transformer.h
+    # elif isinstance(adapter_model.model, BloomForCausalLM):
+    #     layers = adapter_model.model.transformer.h
+    # elif isinstance(adapter_model.model, LlamaForCausalLM):
+    #     layers = adapter_model.model.model.layers
+    # else:
+    #     # TODO: support more LLM
+    #     logger.warning(f'Model {type(adapter_model.model)} not support, '
+    #                    f'use default setting.')
+    #     layers = adapter_model.model.transformer.h
+
+    # return layers
 
 
 def set_layers(adapter_model, layers, emu_l=0, emu_r=-1):
-    if isinstance(adapter_model.model, OPTForCausalLM):
-        adapter_model.model.model.decoder.layers = layers
-    elif isinstance(adapter_model.model, GPT2LMHeadModel):
-        adapter_model.model.transformer.h = layers
-    elif isinstance(adapter_model.model, BloomForCausalLM):
-        adapter_model.model.transformer.h = layers
-    elif isinstance(adapter_model.model, LlamaForCausalLM):
-        adapter_model.model.model.layers = layers
-    else:
-        # TODO: support more LLM
-        logger.warning(f'Model {type(adapter_model.model)} not support, '
-                       f'use default setting.')
-        adapter_model.model.transformer.h = layers
+    # print(adapter_model)
+    # print(adapter_model.layers)
+    # print(layers)
+
+    adapter_model.set_layers(layers)
+
+    # if isinstance(adapter_model.model, OPTForCausalLM):
+    #     adapter_model.model.model.decoder.layers = layers
+    # elif isinstance(adapter_model.model, GPT2LMHeadModel):
+    #     adapter_model.model.transformer.h = layers
+    # elif isinstance(adapter_model.model, BloomForCausalLM):
+    #     adapter_model.model.transformer.h = layers
+    # elif isinstance(adapter_model.model, LlamaForCausalLM):
+    #     adapter_model.model.model.layers = layers
+    # else:
+    #     # TODO: support more LLM
+    #     logger.warning(f'Model {type(adapter_model.model)} not support, '
+    #                    f'use default setting.')
+    #     adapter_model.model.transformer.h = layers
     adapter_model.student = layers[emu_l:emu_r]
     adapter_model.adapter = layers[:emu_l] + layers[emu_r:]
     add_prologue(adapter_model.student[0], None)
@@ -223,7 +235,10 @@ def generate_emulator_and_adapter(model: AdapterModel,
     new_model = set_layers(new_model, new_emulator_and_adapter, emu_l, emu_r)
     new_model.teacher_model_mapping = emulator_maps
     # make the adapter trainable on clients' models
-    convert_layers_train_state(new_model.adapter, is_trainable=True)
+    convert_layers_train_state(
+        new_model.adapter,
+        name_pattern=new_model.trainable_param_name_pattern,
+        is_trainable=True)
     # make the emulator untrainable on clients' models
     convert_layers_train_state(new_model.student, is_trainable=False)
 
@@ -233,11 +248,14 @@ def generate_emulator_and_adapter(model: AdapterModel,
     return new_model
 
 
-def convert_layers_train_state(layers, is_trainable=True):
+def convert_layers_train_state(layers, name_pattern=None, is_trainable=True):
     if is_trainable:
         for layer in layers:
-            for param in layer.parameters():
-                param.requires_grad = True
+            for name, param in layer.named_parameters():
+                if name_pattern is None or name_pattern in name:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
     else:
         for layer in layers:
             for param in layer.parameters():
@@ -311,7 +329,10 @@ def align_student_with_teacher(raw_model, adap_model, cfg, device, monitor):
     convert_layers_train_state(adap_model.adapter, is_trainable=False)
 
     # Make student trainable
-    convert_layers_train_state(adap_model.student, is_trainable=True)
+    convert_layers_train_state(
+        adap_model.student,
+        name_pattern=adap_model.trainable_param_name_pattern,
+        is_trainable=True)
 
     # Loading held-out data
     logger.info('Loading held-out dataset for alignment...')
@@ -336,7 +357,10 @@ def align_student_with_teacher(raw_model, adap_model, cfg, device, monitor):
         adap_model.save_model(cfg.llm.offsite_tuning.emu_align.save_to)
 
     # Make adapter trainable
-    convert_layers_train_state(adap_model.adapter, is_trainable=True)
+    convert_layers_train_state(
+        adap_model.adapter,
+        name_pattern=adap_model.trainable_param_name_pattern,
+        is_trainable=True)
 
     # Make student un-trainable
     convert_layers_train_state(adap_model.student, is_trainable=False)

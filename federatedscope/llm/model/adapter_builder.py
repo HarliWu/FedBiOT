@@ -164,6 +164,12 @@ class AdapterModel(nn.Module):
         else:
             self.model = model
 
+        # print(type(self.model))
+        # merged_model = self.model.merge_and_unload()
+        # print(type(merged_model))
+        # print(type(self.model))
+        # exit(-1)
+
     def get_input_embeddings(self):
         return self.model.get_input_embeddings()
 
@@ -218,8 +224,12 @@ class AdapterModel(nn.Module):
                 new_state_dict[k] = v
         return new_state_dict
 
-    def save_model(self, path, state=0):
-        ckpt = {'cur_round': state, 'model': self.model.state_dict()}
+    def save_model(self, path, state=0, merge_adapter=False):
+        if merge_adapter and isinstance(self.model, PeftModel):
+            merged_model = self.model.merge_and_unload()
+            ckpt = {'cur_round': state, 'model': merged_model.state_dict()}
+        else:
+            ckpt = {'cur_round': state, 'model': self.model.state_dict()}
         torch.save(ckpt, path)
 
     def sharding(self):
@@ -244,6 +254,68 @@ class AdapterModel(nn.Module):
     @property
     def config(self):
         return self.model.config
+
+    @property
+    def layers(self):
+        _layers = []
+        for module in self.model.modules():
+            if isinstance(module, nn.ModuleList):
+                # This one should be encoders/decoders
+                _layers.append(module)
+
+        if len(_layers) == 1:
+            return _layers[0]
+        return _layers
+
+    def set_layers(self, layers):
+        if isinstance(self.layers, nn.ModuleList) and isinstance(
+                layers, nn.ModuleList):
+            self.layers._modules = layers._modules
+
+        elif type(layers) == list and type(self.layers) == list:
+            # This consists of multiple ModuleLists
+            assert len(self.layers) == len(layers)
+            for src, tgt in zip(self.layers, layers):
+                assert isinstance(tgt, nn.ModuleList)
+                src._modules = tgt._modules
+
+        else:
+            raise ValueError(
+                'Layers cannot be set due to the mismatched type. ')
+
+    @property
+    def trainable_param_name_pattern(self):
+        if isinstance(self.model, PeftModel):
+            return self.model.active_adapter
+        return None
+
+    def set_trainable_modules(self, modules=None):
+        # First, set all modules to untrainable
+        for module in self.model.modules():
+            module.requires_grad_(False)
+
+        # Second, search for the capable modules
+        if modules is None:
+            # Set the encoders/decoders to be trainable
+            modules = self.layers
+
+        if isinstance(modules, nn.ModuleList):
+            # Make it to the list
+            trainable_modules = [modules]
+
+        elif type(modules) == list:
+            trainable_modules = modules
+
+        else:
+            raise ValueError(f'{modules} cannot be trainable because '
+                             f'{type(modules)}.')
+
+        pattern = self.trainable_param_name_pattern
+        for module in trainable_modules:
+            for layer in module:
+                for name, param in layer.named_parameters():
+                    if pattern is None or pattern in name:
+                        param.requires_grad = True
 
     # TODO: Fix `__getattr__`
     # def __getattr__(self, item):

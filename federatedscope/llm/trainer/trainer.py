@@ -11,16 +11,27 @@ except:
 import accelerate
 from accelerate import Accelerator
 
+import evaluate
+from transformers import AdamW
+
 from federatedscope.register import register_trainer
 from federatedscope.core.trainers import GeneralTorchTrainer
 from federatedscope.core.trainers.context import CtxVar, lifecycle
 from federatedscope.core.trainers.enums import MODE, LIFECYCLE
 from federatedscope.core.monitors.monitor import Monitor
+from federatedscope.core.data.wrap_dataset import WrapDataset
+from federatedscope.core.auxiliaries.dataloader_builder import get_dataloader
+from federatedscope.core.auxiliaries.ReIterator import ReIterator
 from federatedscope.core.auxiliaries.optimizer_builder import get_optimizer
 from federatedscope.core.auxiliaries.scheduler_builder import get_scheduler
 from federatedscope.llm.model.adapter_builder import AdapterModel
+from federatedscope.llm.dataloader.dataloader import get_tokenizer
 
 logger = logging.getLogger(__name__)
+
+import sys
+
+sys.setrecursionlimit(100000)
 
 
 class LLMTrainer(GeneralTorchTrainer):
@@ -36,10 +47,15 @@ class LLMTrainer(GeneralTorchTrainer):
 
         if config.llm.accelerator.use:
             self.accelerator = Accelerator(
-                gradient_accumulation_steps=self.grad_accum_step)
+                gradient_accumulation_steps=self.grad_accum_step,
+                mixed_precision='bf16')
             device = self.accelerator.device
 
         super().__init__(model, data, device, config, only_for_eval, monitor)
+        model_name, _ = config.model.type.split('@')
+        self.tokenizer, _ = get_tokenizer(model_name, config.data.root,
+                                          config.llm.tok_len)
+        self.eval_metrics = config.eval.metrics
 
     @lifecycle(LIFECYCLE.BATCH)
     def _run_batch(self, hooks_set, run_step=-1):
@@ -50,18 +66,19 @@ class LLMTrainer(GeneralTorchTrainer):
 
             if hasattr(self, 'accelerator'):
                 # Build gradient accumulation upon accelerator
-                with self.accelerator.accumulate(self.ctx.model):
-                    for hook in hooks_set["on_batch_start"]:
-                        hook(self.ctx)
+                for _ in range(self.grad_accum_step):
+                    with self.accelerator.accumulate(self.ctx.model):
+                        for hook in hooks_set["on_batch_start"]:
+                            hook(self.ctx)
 
-                    for hook in hooks_set["on_batch_forward"]:
-                        hook(self.ctx)
+                        for hook in hooks_set["on_batch_forward"]:
+                            hook(self.ctx)
 
-                    for hook in hooks_set["on_batch_backward"]:
-                        hook(self.ctx)
+                        for hook in hooks_set["on_batch_backward"]:
+                            hook(self.ctx)
 
-                    for hook in hooks_set["on_batch_end"]:
-                        hook(self.ctx)
+                        for hook in hooks_set["on_batch_end"]:
+                            hook(self.ctx)
 
             else:
                 for idx in range(self.grad_accum_step):
@@ -101,8 +118,12 @@ class LLMTrainer(GeneralTorchTrainer):
             if ctx.cur_mode in [MODE.TRAIN, MODE.FINETUNE]:
                 # Initialize optimizer here to avoid the reuse of optimizers
                 # across different routines
-                ctx.optimizer = get_optimizer(
-                    ctx.model, **ctx.cfg[ctx.cur_mode].optimizer)
+                if ctx.cfg.train.optimizer == 'AdamW':
+                    ctx.optimizer = AdamW(ctx.model.parameters(),
+                                          **ctx.cfg[ctx.cur_mode].optimizer)
+                else:
+                    ctx.optimizer = get_optimizer(
+                        ctx.model, **ctx.cfg[ctx.cur_mode].optimizer)
                 ctx.optimizer.zero_grad()
                 ctx.scheduler = get_scheduler(
                     ctx.optimizer, **ctx.cfg[ctx.cur_mode].scheduler)
@@ -153,6 +174,18 @@ class LLMTrainer(GeneralTorchTrainer):
         ctx.num_samples = CtxVar(0, LIFECYCLE.ROUTINE)
         ctx.ys_true = CtxVar([], LIFECYCLE.ROUTINE)
         ctx.ys_prob = CtxVar([], LIFECYCLE.ROUTINE)
+
+    def _hook_on_epoch_start(self, ctx):
+        # prepare dataloader
+        if ctx.get("{}_loader".format(ctx.cur_split)) is None:
+            loader = get_dataloader(
+                WrapDataset(ctx.get("{}_data".format(ctx.cur_split))),
+                self.cfg, ctx.cur_split)
+            setattr(ctx, "{}_loader".format(ctx.cur_split), ReIterator(loader))
+        elif not isinstance(ctx.get("{}_loader".format(ctx.cur_split)),
+                            ReIterator):
+            setattr(ctx, "{}_loader".format(ctx.cur_split),
+                    ReIterator(ctx.get("{}_loader".format(ctx.cur_split))))
 
     def _hook_on_batch_forward(self, ctx):
         if ctx.cfg.llm.accelerator.use:
@@ -328,6 +361,79 @@ class LLMTrainer(GeneralTorchTrainer):
         # thus simply multiply the flops to avoid redundant forward
         ctx.monitor.total_flops += ctx.monitor.flops_per_sample * \
             ctx.batch_size
+
+    # @torch.no_grad()
+    # def evaluate(self, target_data_split_name="test"):
+    #     # Reset the iterator to finite version
+    #     if self.ctx.get(f"{target_data_split_name}_loader") is None:
+    #         loader = get_dataloader(
+    #             WrapDataset(self.ctx.get(f"{target_data_split_name}_data")),
+    #             self.cfg, target_data_split_name)
+    #         setattr(self.ctx, f"{target_data_split_name}_loader", loader)
+    #     elif isinstance(self.ctx.get(f"{target_data_split_name}_loader"),
+    #                     ReIterator):
+    #         setattr(self.ctx, f"{target_data_split_name}_loader",
+    #                 self.ctx.get(f"{target_data_split_name}_loader").loader)
+
+    #     eval_results = dict()
+    #     predictions, references, tot_loss, num_samples = [], [], 0., 0
+
+    #     loader = self.ctx.get(f"{target_data_split_name}_loader")
+    #     if self.ctx.cfg.llm.accelerator.use:
+    #         logger.info(f'{target_data_split_name}_loader '
+    #                     f'type: {type(loader)}')
+    #         loader = self.accelerator.prepare_data_loader(loader)
+
+    #     logger.info('Start evaluation... ')
+    #     for data_batch in loader:
+    #         input_ids = data_batch['input_ids'].to(self.ctx.device)
+    #         labels = data_batch['labels'].to(self.ctx.device)
+    #         attention_mask = data_batch['attention_mask'].to(self.ctx.device)
+
+    #         if 'bleu' in self.eval_metrics or 'rouge' in self.eval_metrics:
+    #             output_ids = self.ctx.model.generate(
+    #                 input_ids=input_ids, attention_mask=attention_mask,
+    #                 do_sample=False, num_beams=1)
+
+    #             for i in range(output_ids.shape[0]):
+    #                 predictions.append(
+    #                     self.tokenizer.decode(output_ids[i][input_ids.shape[1]:],
+    #                                           skip_special_tokens=True,
+    #                                           ignore_tokenization_space=True))
+    #                 references.append(
+    #                     self.tokenizer.decode(labels[i][input_ids[i].shape[0]:],
+    #                                           skip_special_tokens=True,
+    #                                           ignore_tokenization_space=True))
+
+    #         if 'loss' in self.eval_metrics:
+    #             outputs = self.ctx.model(
+    #                 input_ids=input_ids, labels=labels,
+    #                 attention_mask=attention_mask)
+    #             tot_loss = tot_loss + outputs.loss * len(labels)
+    #             num_samples = num_samples + len(labels)
+
+    #     eval_results['total'] = num_samples
+    #     if 'bleu' in self.eval_metrics:
+    #         bleu = evaluate.load("bleu")
+    #         bleu_results = bleu.compute(
+    #             preductions=predictions,
+    #             references=[[ref] for ref in references])
+    #         eval_results.update(bleu_results)
+
+    #     if 'rouge' in self.eval_metrics:
+    #         rouge = evaluate.load("rouge")
+    #         rouge_results = rouge.compute(
+    #             predictions=predictions, references=references)
+    #         eval_results.update(rouge_results)
+
+    #     if 'loss' in self.eval_metrics:
+    #         eval_results['loss'] = tot_loss
+    #         eval_results['avg_loss'] = tot_loss/num_samples
+
+    #     setattr(self.ctx, 'eval_metrics',
+    #             {f'{target_data_split_name}_{key}': value
+    #             for (key, value) in eval_results.items()})
+    #     return self.ctx.eval_metrics
 
 
 def call_llm_trainer(trainer_type):

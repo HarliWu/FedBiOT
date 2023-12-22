@@ -174,8 +174,8 @@ class FSChatBot(object):
                 add_special_tokens=True,
                 return_tensors="pt",
             )
-            input_ids = input_text_tokens.input_ids
-            attention_mask = input_text_tokens.attention_mask
+            input_ids = input_text_tokens.input_ids.to('cuda')
+            attention_mask = input_text_tokens.attention_mask.to('cuda')
 
             output_ids = self.model.generate(input_ids=input_ids,
                                              attention_mask=attention_mask,
