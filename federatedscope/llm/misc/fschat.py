@@ -2,7 +2,7 @@ import sys
 import logging
 import torch
 import transformers
-from transformers import pipeline
+from transformers import pipeline, GenerationConfig
 import os
 import gc
 
@@ -82,6 +82,9 @@ class FSChatBot(object):
         self.model = get_llm(self.config,
                              device_map='auto',
                              torch_dtype=model_dtype)
+        self.generation_config = GenerationConfig.from_pretrained(model_name)
+        logger.info(f'{model_name} default generation setting: '
+                    f'{self.generation_config}')
 
         self.curpfx = None
         for pre in self.prefix:
@@ -176,6 +179,7 @@ class FSChatBot(object):
             )
             input_ids = input_text_tokens.input_ids.to('cuda')
             attention_mask = input_text_tokens.attention_mask.to('cuda')
+            # generate_kwargs['generation_config'] = self.generation_config
 
             output_ids = self.model.generate(input_ids=input_ids,
                                              attention_mask=attention_mask,

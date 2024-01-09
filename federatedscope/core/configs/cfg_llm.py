@@ -78,9 +78,11 @@ def extend_llm_cfg(cfg):
     cfg.llm.offsite_tuning.emu_align = CN()
     cfg.llm.offsite_tuning.emu_align.use = False
     cfg.llm.offsite_tuning.emu_align.initial_only = True
-    cfg.llm.offsite_tuning.emu_align.sim_loss = 'cos'  # Choose one of
+    cfg.llm.offsite_tuning.emu_align.sim_loss = 'l2'  # Choose one of
     # `['cos', 'l2']`
     cfg.llm.offsite_tuning.emu_align.layerwise_distill = False
+    cfg.llm.offsite_tuning.emu_align.kl_divergence = 'raw'  # Choose one of
+    # `['raw', 'logps']`
     cfg.llm.offsite_tuning.emu_align.restore_from = ''
     cfg.llm.offsite_tuning.emu_align.save_to = ''
     cfg.llm.offsite_tuning.emu_align.exit_after_align = False

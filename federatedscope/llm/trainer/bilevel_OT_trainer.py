@@ -9,6 +9,7 @@ from federatedscope.core.trainers.context import CtxVar
 from federatedscope.core.trainers.enums import LIFECYCLE
 from federatedscope.core.monitors.monitor import Monitor
 from federatedscope.llm.model.adapter_builder import AdapterModel
+from federatedscope.llm.dataset.llm_dataset import DefaultToken
 
 import sys
 
@@ -119,6 +120,46 @@ def get_kd_kl_divergence(teacher_model: AdapterModel, student_outputs,
     return kd_loss
 
 
+def _get_batch_logps(logits, labels, average_log_prob=False):
+    """
+    Source: https://github.com/eric-mitchell/direct-preference-optimization/
+        blob/main/trainers.py#L208
+
+    Compute the log probabilities of the given labels under the given logits.
+
+    Args:
+        logits: Logits of the model (unnormalized).
+            Shape: (batch_size, sequence_length, vocab_size)
+        labels: Labels for which to compute the log probabilities.
+            Label tokens with a value of -100 are ignored.
+            Shape: (batch_size, sequence_length)
+        average_log_prob: If True, return the average log probability
+            per (non-masked) token. Otherwise, return the sum of the
+            log probabilities of the (non-masked) tokens.
+
+    Returns:
+        A tensor of shape (batch_size,) containing the average/sum
+            log probabilities of the given labels under the given logits.
+    """
+    assert logits.shape[:-1] == labels.shape
+
+    labels = labels[:, 1:].clone()
+    logits = logits[:, :-1, :]
+    loss_mask = (labels != DefaultToken.IGNORE_INDEX.value)
+
+    # dummy token; we'll ignore the losses on these tokens later
+    labels[labels == DefaultToken.IGNORE_INDEX.value] = 0
+
+    per_token_logps = torch.gather(logits.log_softmax(-1),
+                                   dim=2,
+                                   index=labels.unsqueeze(2)).squeeze(2)
+
+    if average_log_prob:
+        return (per_token_logps * loss_mask).sum(-1) / loss_mask.sum(-1)
+    else:
+        return (per_token_logps * loss_mask).sum(-1)
+
+
 class OTTrainer_server(LLMTrainer):
     def __init__(self,
                  raw_model: AdapterModel,
@@ -133,12 +174,12 @@ class OTTrainer_server(LLMTrainer):
         self.ctx.raw_model = raw_model.to(device)
         self.ctx.raw_model_adapter = copy.deepcopy(
             raw_model.adapter.state_dict())
-        self.lm_loss_weight = \
-            config.llm.offsite_tuning.emu_align.train.lm_loss_weight
         self.kd_loss_weight = \
             config.llm.offsite_tuning.emu_align.train.kd_loss_weight
         self.layerwise_distill = \
             config.llm.offsite_tuning.emu_align.layerwise_distill
+        self.kl_divergence = \
+            config.llm.offsite_tuning.emu_align.kl_divergence
 
     def _hook_on_fit_start_numerical_precision(self, ctx):
         super(OTTrainer_server,
@@ -176,8 +217,24 @@ class OTTrainer_server(LLMTrainer):
         self.ctx.raw_model.adapter.load_state_dict(
             ctx.model.adapter.state_dict())
         # Calculate an overall gap loss based on the entire model
-        gap_loss_kl = get_kd_kl_divergence(self.ctx.raw_model, outputs,
-                                           input_ids, attention_mask)
+        if self.kl_divergence == 'raw':
+            gap_loss_kl = get_kd_kl_divergence(self.ctx.raw_model, outputs,
+                                               input_ids, attention_mask)
+        else:
+            student_logps = _get_batch_logps(outputs.logits,
+                                             labels,
+                                             average_log_prob=False)
+            with torch.no_grad():
+                self.ctx.raw_model.eval()
+                teacher_outputs = self.ctx.raw_model(
+                    input_ids=input_ids,
+                    labels=labels,
+                    attention_mask=attention_mask)
+                teacher_logps = _get_batch_logps(teacher_outputs.logits,
+                                                 labels,
+                                                 average_log_prob=False)
+            gap_loss_kl = student_logps - teacher_logps
+
         # find the gap between emulator and its counterpart
         if self.cfg.llm.offsite_tuning.emu_align.sim_loss == 'l2':
             gap_loss_l2 = get_kd_loss(l2_norm, self.ctx.raw_model, ctx.model,

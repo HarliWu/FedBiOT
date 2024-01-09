@@ -4,6 +4,7 @@ import json
 import random
 import logging
 import torch
+import datasets
 import transformers
 from transformers import GenerationConfig
 from tqdm import tqdm
@@ -138,6 +139,46 @@ def get_tokenizer(model_name, cache_dir, tok_len=128):
     return tokenizer, num_new_tokens
 
 
+class new_dict(dict):
+    """
+    Create a new_dict to ensure we can access the dictionary with
+    one bracket only
+    e.g., dict[key1][key2][key3] --> dict[key1.key2.key3]
+    """
+    def __init__(self, init_dict: dict):
+        self.dict = init_dict
+        for key in self.dict.keys():
+            if type(self.dict[key]) is dict:
+                self.dict[key] = new_dict(self.dict[key])
+            if type(self.dict[key]) is list:
+                self.dict[key] = new_dict({
+                    str(idx): value
+                    for idx, value in enumerate(self.dict[key])
+                })
+
+    def __getitem__(self, __key):
+        try:
+            if '.' not in __key:
+                return self.dict[__key]
+            else:
+                prefix, suffix = __key.split('.', 1)
+                return self.dict[prefix][suffix]
+        except:
+            return None
+
+    def __setitem__(self, __key, __value):
+        if type(__value) is dict:
+            self.dict[__key] = new_dict(__value)
+        else:
+            if '.' not in __key:
+                self.dict[__key] = __value
+            else:
+                prefix, suffix = __key.split('.', 1)
+                if prefix not in self:
+                    self.dict[prefix] = new_dict({})
+                self.dict[prefix][suffix] = __value
+
+
 def load_json(file_path,
               instruction='instruction',
               input='input',
@@ -175,16 +216,30 @@ def load_jsonl(file_path,
     open_func = open if not is_gzip else gzip.open
     with open_func(file_path, 'r') as f:
         for line in f:
-            item = json.loads(line)
-            new_item = dict(
-                instruction=item[instruction] if instruction in item else None,
-                input=item[input] if input in item else None,
-                output=item[output] if output in item else None,
-                category=item[category] if category in item else None)
+            item = new_dict(json.loads(line))
+            new_item = dict(instruction=item[instruction],
+                            input=item[input],
+                            output=item[output],
+                            category=item[category])
             for key, value in kwargs.items():
                 new_item[key] = item[value]
             item = new_item
             list_data_dict.append(item)
+    return list_data_dict
+
+
+def load_jsonls(file_paths,
+                is_gzip=False,
+                instruction='instruction',
+                input='input',
+                output='output',
+                category='category',
+                **kwargs):
+    list_data_dict = []
+    for path in file_paths:
+        list_data_dict.extend(
+            load_jsonl(path, is_gzip, instruction, input, output, category,
+                       **kwargs))
     return list_data_dict
 
 
@@ -199,10 +254,12 @@ def load_llm_dataset(config=None, **kwargs):
         fp = os.path.join(config.data.root, dataset_name)
         list_data_dict = load_json(fp)
         dataset = LLMDataset(list_data_dict, tokenizer)
+
     elif dataset_name.endswith('.jsonl'):
         fp = os.path.join(config.data.root, dataset_name)
         list_data_dict = load_jsonl(fp)
         dataset = LLMDataset(list_data_dict, tokenizer)
+
     elif dataset_name.lower() == 'alpaca':
         fp = os.path.join(config.data.root, 'alpaca_data.json')
         download_url(
@@ -212,6 +269,7 @@ def load_llm_dataset(config=None, **kwargs):
             'alpaca_data.json', config.data.root)
         list_data_dict = load_json(fp)
         dataset = LLMDataset(list_data_dict, tokenizer)
+
     elif dataset_name.lower() == 'alpaca_cleaned':
         fp = os.path.join(config.data.root, 'alpaca_data_cleaned.json')
         download_url(
@@ -220,6 +278,7 @@ def load_llm_dataset(config=None, **kwargs):
             'alpaca_data_cleaned.json', config.data.root)
         list_data_dict = load_json(fp)
         dataset = LLMDataset(list_data_dict, tokenizer)
+
     elif dataset_name.lower() == 'dolly-15k':
         fp = os.path.join(config.data.root, 'databricks-dolly-15k.jsonl')
         download_url(
@@ -232,6 +291,7 @@ def load_llm_dataset(config=None, **kwargs):
                                     output='response',
                                     category='category')
         dataset = LLMDataset(list_data_dict, tokenizer)
+
     elif dataset_name.lower() == 'gsm8k':
         fp = os.path.join(config.data.root, 'gsm8k_train.jsonl')
         if not os.path.exists(fp):
@@ -247,6 +307,7 @@ def load_llm_dataset(config=None, **kwargs):
             list_data_dict[i]['output'] = \
                 list_data_dict[i]['output'].replace('####', 'The answer is')
         dataset = LLMDataset(list_data_dict, tokenizer)
+
     elif dataset_name.lower() == 'code_search_net':
         from federatedscope.llm.dataset.code_search_net import \
             CSN_FILE_NUM_DICT
@@ -290,6 +351,7 @@ def load_llm_dataset(config=None, **kwargs):
                 'federatedscope/llm/dataset/code_search_net.py` '
                 'to download data.')
         dataset = LLMDataset(list_data_dict, tokenizer)
+
     elif dataset_name.lower() == 'rosetta_alpaca':
         fp = os.path.join(config.data.root, 'rosetta_alpaca.json')
         download_url(
@@ -343,18 +405,49 @@ def load_llm_dataset(config=None, **kwargs):
             list_data_dict[i]['instruction'] = \
                 list_data_dict[i]['instruction'].replace('\u00a0', '')
         dataset = LLMDataset(list_data_dict, tokenizer)
+
     elif dataset_name.lower() == 'offsite_tuning':
+        from federatedscope.llm.dataloader.offsite_tuning_dataset import \
+            PIQA, HellaSwag, OpenBookQA, ARC, SciQ, WebQs, RACE
         # list of dataset
-        dataset_links = {
-            'OpenBookQA': None,
-            'PIQA': None,
-            'ARC': None,
-            'HellaSwag': None,
-            'SciQ': None,
-            'WebQuestions': None,
-            'RACE': None
+        task_dict = {
+            "piqa": PIQA(),
+            "hellaswag": HellaSwag(),
+            "openbookqa": OpenBookQA(),
+            "arc_easy": ARC(name='ARC-Easy'),
+            "arc_challenge": ARC(name='ARC-Challenge'),
+            "sciq": SciQ(),
+            "web_questions": WebQs(),
+            "race": RACE(),
         }
+        # concat these datasets
+        list_train_dict, list_val_dict, list_test_dict = [], [], []
+        for dataset in task_dict.values():
+            list_train_dict += dataset.get_data_dict(label='train')
+            list_val_dict += dataset.get_data_dict(label='validation')
+            list_test_dict += dataset.get_data_dict(label='test')
+
+        train_dataset = LLMDataset(list_train_dict,
+                                   tokenizer,
+                                   prompt_no_input='{context}',
+                                   prompt_input='{context}',
+                                   output_tag='target')
+        val_dataset = LLMDataset(list_val_dict,
+                                 tokenizer,
+                                 prompt_no_input='{context}',
+                                 prompt_input='{context}',
+                                 output_tag='target')
+        test_dataset = LLMDataset(list_test_dict,
+                                  tokenizer,
+                                  prompt_no_input='{context}',
+                                  prompt_input='{context}',
+                                  output_tag='target')
+
+        dataset = (train_dataset, val_dataset, test_dataset)
+
+    elif dataset_name.lower() == 'wikitext-2':
         pass
+
     else:
         raise ValueError(f'Not support data type {dataset_name}.')
 

@@ -41,23 +41,27 @@ class LLMDataset(Dataset):
                  list_data_dict,
                  tokenizer,
                  prompt_input=PROMPT_DICT["prompt_input"],
-                 prompt_no_input=PROMPT_DICT["prompt_no_input"]):
+                 prompt_no_input=PROMPT_DICT["prompt_no_input"],
+                 output_tag='output'):
         super(LLMDataset, self).__init__()
 
-        self.sources = [
-            prompt_input.format_map(example) if example.get("input", "") != ""
-            else prompt_no_input.format_map(example)
-            for example in list_data_dict
-        ]
+        self.sources = []
+        for example in list_data_dict:
+            input = example.get("input", None)
+            if input is not None and input != "":
+                self.sources.append(prompt_input.format_map(input))
+            else:
+                self.sources.append(prompt_no_input.format_map(input))
+
         targets = [
-            f"{example['output']}{tokenizer.eos_token}"
+            f"{example[output_tag]}{tokenizer.eos_token}"
             for example in list_data_dict
         ]
-        self.llm_generated_targets = [
-            f"{example['llm_output']}"
-            if example.get("llm_output", "") != "" else None
-            for example in list_data_dict
-        ]
+        # self.llm_generated_targets = [
+        #     f"{example['llm_output']}"
+        #     if example.get("llm_output", "") != "" else None
+        #     for example in list_data_dict
+        # ]
 
         data_dict = self.preprocess(self.sources, targets, tokenizer)
 
@@ -118,14 +122,14 @@ class LLMDataset(Dataset):
                     labels=self.labels[i],
                     categories=self.categories[i])
 
-    def overwrite_by_llm(self, i):
-        source = self.sources[i]
-        llm_answer = self.llm_generated_targets[i]
+    # def overwrite_by_llm(self, i):
+    #     source = self.sources[i]
+    #     llm_answer = self.llm_generated_targets[i]
 
-        if llm_answer is None or llm_answer == "":
-            return
+    #     if llm_answer is None or llm_answer == "":
+    #         return
 
-        llm_result_tknz = \
-            self.preprocess([source], [llm_answer], self.tokenizer)
-        self.input_ids[i], self.labels[i] = \
-            llm_result_tknz['input_ids'][0], llm_result_tknz['labels'][0]
+    #     llm_result_tknz = \
+    #         self.preprocess([source], [llm_answer], self.tokenizer)
+    #     self.input_ids[i], self.labels[i] = \
+    #         llm_result_tknz['input_ids'][0], llm_result_tknz['labels'][0]
