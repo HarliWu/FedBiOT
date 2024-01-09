@@ -49,9 +49,9 @@ class LLMDataset(Dataset):
         for example in list_data_dict:
             input = example.get("input", None)
             if input is not None and input != "":
-                self.sources.append(prompt_input.format_map(input))
+                self.sources.append(prompt_input.format_map(example))
             else:
-                self.sources.append(prompt_no_input.format_map(input))
+                self.sources.append(prompt_no_input.format_map(example))
 
         targets = [
             f"{example[output_tag]}{tokenizer.eos_token}"
