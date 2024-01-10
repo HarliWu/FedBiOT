@@ -161,8 +161,9 @@ class GeneralTorchTrainer(Trainer):
         self.register_hook_in_eval(self._hook_on_fit_end, "on_fit_end")
 
     def _hook_on_fit_start_numerical_precision(self, ctx):
-        if self.cfg.train.is_enable_half:
-            ctx.model = ctx.model.half()
+        # if self.cfg.train.is_enable_half:
+        #     ctx.model = ctx.model.half()
+        pass
 
     def _hook_on_data_parallel_init(self, ctx):
         """

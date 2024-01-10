@@ -94,8 +94,8 @@ class Server(BaseServer):
                 and not self._cfg.federate.process_num > 1 \
                 and not self._cfg.llm.deepspeed.use \
                 and not self._cfg.llm.accelerator.use:
-            if self._cfg.train.is_enable_half:
-                model = model.half()
+            # if self._cfg.train.is_enable_half:
+            #     model = model.half()
             # put the model to the specified device
             model.to(device)
         # Build aggregator

@@ -77,42 +77,6 @@ class Predictor:
         return response_tokens
 
 
-def create_datasett_with_llm_generated(
-        path: str,
-        config,
-        list_data_dict,
-        predictor: Predictor,
-        prompt_input=PROMPT_DICT["prompt_input"],
-        prompt_no_input=PROMPT_DICT["prompt_no_input"]):
-    model_name = config.model.type.split('@')[0].split('/')[-1]
-    assert path.endswith('.json') and f'{model_name}_generated' in path
-    print(path)
-    if os.path.exists(path):
-        logger.info('File with LLM-generated text exists, use existing file.')
-        return
-    model = get_llm(config).to(predictor.device)
-    if config.train.is_enable_half:
-        model.half()
-    no_pred_inst = []
-    for example in list_data_dict:
-        if example.get("instruction", "") in no_pred_inst:
-            continue
-        if example.get("input", "") != "":
-            input_text = prompt_input.format_map(example)
-        else:
-            input_text = prompt_no_input.format_map(example)
-        llm_output = predictor(input_text, model)
-        if llm_output == "" or llm_output is None:
-            # Invalid prediction, append to no_pred_inst
-            # (no prediction instructions) and skip
-            no_pred_inst.append(example.get("instruction", ""))
-        else:
-            example['llm_output'] = predictor(input_text, model)
-    print(list_data_dict)
-    with open(path, 'w') as f:
-        f.write(json.dumps(list_data_dict, indent=4))
-
-
 def get_tokenizer(model_name, cache_dir, tok_len=128):
     from transformers import AutoTokenizer
 
@@ -364,33 +328,6 @@ def load_llm_dataset(config=None, **kwargs):
                                    input='input',
                                    output='output',
                                    category='input')
-        if config.llm.offsite_tuning.llm_generated.use:
-            model_type = model_name.split('/')[-1]
-            fp = os.path.join(config.data.root,
-                              f'rosetta_alpaca_{model_type}_generated.json')
-            create_datasett_with_llm_generated(
-                path=fp,
-                config=config,
-                list_data_dict=list_data_dict,
-                predictor=Predictor(
-                    config,
-                    tokenizer,
-                    # generate_kwargs=dict(
-                    #     max_new_tokens=128,
-                    #     generation_config=GenerationConfig(
-                    #         temperature=0.1,
-                    #         top_k=40,
-                    #         top_p=0.75,
-                    #         do_sample=True,
-                    #         num_return_sequences=1,
-                    # ))
-                ))
-            list_data_dict = load_json(fp,
-                                       instruction='instruction',
-                                       input='input',
-                                       output='output',
-                                       llm_output='llm_output',
-                                       category='input')
 
         # Remove 'x86-64 Assembl' if splitter is `meta` due to the number of
         # samples is too small.

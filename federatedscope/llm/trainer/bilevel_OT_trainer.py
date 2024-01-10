@@ -181,11 +181,11 @@ class OTTrainer_server(LLMTrainer):
         self.kl_divergence = \
             config.llm.offsite_tuning.emu_align.kl_divergence
 
-    def _hook_on_fit_start_numerical_precision(self, ctx):
-        super(OTTrainer_server,
-              self)._hook_on_fit_start_numerical_precision(ctx)
-        if self.cfg.train.is_enable_half:
-            ctx.raw_model = ctx.raw_model.half()
+    # def _hook_on_fit_start_numerical_precision(self, ctx):
+    #     super(OTTrainer_server,
+    #           self)._hook_on_fit_start_numerical_precision(ctx)
+    #     if self.cfg.train.is_enable_half:
+    #         ctx.raw_model = ctx.raw_model.half()
 
     def train(self, target_data_split_name="train", hooks_set=None):
         self.ctx.raw_model.to(self.ctx.device)
@@ -223,7 +223,7 @@ class OTTrainer_server(LLMTrainer):
         else:
             student_logps = _get_batch_logps(outputs.logits,
                                              labels,
-                                             average_log_prob=False)
+                                             average_log_prob=True)
             with torch.no_grad():
                 self.ctx.raw_model.eval()
                 teacher_outputs = self.ctx.raw_model(
@@ -232,8 +232,8 @@ class OTTrainer_server(LLMTrainer):
                     attention_mask=attention_mask)
                 teacher_logps = _get_batch_logps(teacher_outputs.logits,
                                                  labels,
-                                                 average_log_prob=False)
-            gap_loss_kl = student_logps - teacher_logps
+                                                 average_log_prob=True)
+            gap_loss_kl = (student_logps - teacher_logps).mean()
 
         # find the gap between emulator and its counterpart
         if self.cfg.llm.offsite_tuning.emu_align.sim_loss == 'l2':

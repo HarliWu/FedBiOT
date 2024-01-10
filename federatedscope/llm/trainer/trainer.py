@@ -11,7 +11,6 @@ except:
 import accelerate
 from accelerate import Accelerator
 
-import evaluate
 from transformers import AdamW
 
 from federatedscope.register import register_trainer
@@ -104,11 +103,11 @@ class LLMTrainer(GeneralTorchTrainer):
                 if batch_i >= self.ctx.num_train_batch_last_epoch - 1:
                     break
 
-    def _hook_on_fit_start_numerical_precision(self, ctx):
-        if self.cfg.train.is_enable_half:
-            if not ctx.cfg.llm.deepspeed.use and \
-               not ctx.cfg.llm.accelerator.use:
-                ctx.model = ctx.model.half()
+    # def _hook_on_fit_start_numerical_precision(self, ctx):
+    #     if self.cfg.train.is_enable_half:
+    #         if not ctx.cfg.llm.deepspeed.use and \
+    #            not ctx.cfg.llm.accelerator.use:
+    #             ctx.model = ctx.model.half()
 
     def _hook_on_fit_start_init(self, ctx):
         if ctx.cfg.llm.accelerator.use:
@@ -154,8 +153,8 @@ class LLMTrainer(GeneralTorchTrainer):
                     )
             # Enable all cards from 0
             ctx.device = ctx.model_engine.local_rank
-            if ctx.cfg.train.is_enable_half:
-                ctx.fp16 = ctx.model_engine.fp16_enabled()
+            # if ctx.cfg.train.is_enable_half:
+            #     ctx.fp16 = ctx.model_engine.fp16_enabled()
 
         else:
             # prepare model and optimizer
@@ -361,79 +360,6 @@ class LLMTrainer(GeneralTorchTrainer):
         # thus simply multiply the flops to avoid redundant forward
         ctx.monitor.total_flops += ctx.monitor.flops_per_sample * \
             ctx.batch_size
-
-    # @torch.no_grad()
-    # def evaluate(self, target_data_split_name="test"):
-    #     # Reset the iterator to finite version
-    #     if self.ctx.get(f"{target_data_split_name}_loader") is None:
-    #         loader = get_dataloader(
-    #             WrapDataset(self.ctx.get(f"{target_data_split_name}_data")),
-    #             self.cfg, target_data_split_name)
-    #         setattr(self.ctx, f"{target_data_split_name}_loader", loader)
-    #     elif isinstance(self.ctx.get(f"{target_data_split_name}_loader"),
-    #                     ReIterator):
-    #         setattr(self.ctx, f"{target_data_split_name}_loader",
-    #                 self.ctx.get(f"{target_data_split_name}_loader").loader)
-
-    #     eval_results = dict()
-    #     predictions, references, tot_loss, num_samples = [], [], 0., 0
-
-    #     loader = self.ctx.get(f"{target_data_split_name}_loader")
-    #     if self.ctx.cfg.llm.accelerator.use:
-    #         logger.info(f'{target_data_split_name}_loader '
-    #                     f'type: {type(loader)}')
-    #         loader = self.accelerator.prepare_data_loader(loader)
-
-    #     logger.info('Start evaluation... ')
-    #     for data_batch in loader:
-    #         input_ids = data_batch['input_ids'].to(self.ctx.device)
-    #         labels = data_batch['labels'].to(self.ctx.device)
-    #         attention_mask = data_batch['attention_mask'].to(self.ctx.device)
-
-    #         if 'bleu' in self.eval_metrics or 'rouge' in self.eval_metrics:
-    #             output_ids = self.ctx.model.generate(
-    #                 input_ids=input_ids, attention_mask=attention_mask,
-    #                 do_sample=False, num_beams=1)
-
-    #             for i in range(output_ids.shape[0]):
-    #                 predictions.append(
-    #                     self.tokenizer.decode(output_ids[i][input_ids.shape[1]:],
-    #                                           skip_special_tokens=True,
-    #                                           ignore_tokenization_space=True))
-    #                 references.append(
-    #                     self.tokenizer.decode(labels[i][input_ids[i].shape[0]:],
-    #                                           skip_special_tokens=True,
-    #                                           ignore_tokenization_space=True))
-
-    #         if 'loss' in self.eval_metrics:
-    #             outputs = self.ctx.model(
-    #                 input_ids=input_ids, labels=labels,
-    #                 attention_mask=attention_mask)
-    #             tot_loss = tot_loss + outputs.loss * len(labels)
-    #             num_samples = num_samples + len(labels)
-
-    #     eval_results['total'] = num_samples
-    #     if 'bleu' in self.eval_metrics:
-    #         bleu = evaluate.load("bleu")
-    #         bleu_results = bleu.compute(
-    #             preductions=predictions,
-    #             references=[[ref] for ref in references])
-    #         eval_results.update(bleu_results)
-
-    #     if 'rouge' in self.eval_metrics:
-    #         rouge = evaluate.load("rouge")
-    #         rouge_results = rouge.compute(
-    #             predictions=predictions, references=references)
-    #         eval_results.update(rouge_results)
-
-    #     if 'loss' in self.eval_metrics:
-    #         eval_results['loss'] = tot_loss
-    #         eval_results['avg_loss'] = tot_loss/num_samples
-
-    #     setattr(self.ctx, 'eval_metrics',
-    #             {f'{target_data_split_name}_{key}': value
-    #             for (key, value) in eval_results.items()})
-    #     return self.ctx.eval_metrics
 
 
 def call_llm_trainer(trainer_type):
