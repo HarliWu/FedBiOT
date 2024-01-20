@@ -8,6 +8,7 @@ from federatedscope.llm.trainer.trainer import LLMTrainer
 from federatedscope.core.trainers.context import CtxVar
 from federatedscope.core.trainers.enums import LIFECYCLE
 from federatedscope.core.monitors.monitor import Monitor
+from federatedscope.core.trainers.utils import calculate_batch_epoch_num
 from federatedscope.llm.model.adapter_builder import AdapterModel
 from federatedscope.llm.dataset.llm_dataset import DefaultToken
 
@@ -180,6 +181,17 @@ class OTTrainer_server(LLMTrainer):
             config.llm.offsite_tuning.emu_align.layerwise_distill
         self.kl_divergence = \
             config.llm.offsite_tuning.emu_align.kl_divergence
+
+        # Overwrite the train steps with emu_align hyper-parameters 
+        self.ctx.num_train_batch, self.ctx.num_train_batch_last_epoch, \
+        self.ctx.num_train_epoch, self.ctx.num_total_train_batch = \
+            calculate_batch_epoch_num(
+                config.llm.offsite_tuning.emu_align.train.local_update_steps,
+                config.llm.offsite_tuning.emu_align.train.batch_or_epoch,
+                self.ctx.get('num_train_data'),
+                config.dataloader.batch_size,
+                config.dataloader.drop_last
+            )
 
     # def _hook_on_fit_start_numerical_precision(self, ctx):
     #     super(OTTrainer_server,

@@ -266,13 +266,13 @@ def build_cfg_for_alignment(config):
     new_cfg = copy.deepcopy(config)
     new_cfg.defrost()
 
-    # Overwrite `config.train` with
-    # `config.llm.offsite_tuning.emu_align.train`
-    for key, value in \
-            new_cfg.llm.offsite_tuning.emu_align.train.optimizer.items():
-        if key.startswith('__'):
-            continue
-        setattr(new_cfg, f'train.optimizer.{key}', value)
+    # # Overwrite `config.train` with
+    # # `config.llm.offsite_tuning.emu_align.train`
+    # for key, value in \
+    #         new_cfg.llm.offsite_tuning.emu_align.train.optimizer.items():
+    #     if key.startswith('__'):
+    #         continue
+    #     setattr(new_cfg.train.optimizer, f'{key}', value)
     new_cfg.train.local_update_steps = \
         config.llm.offsite_tuning.emu_align.train.local_update_steps
     new_cfg.train.batch_or_epoch = \
@@ -282,9 +282,9 @@ def build_cfg_for_alignment(config):
     # `config.llm.offsite_tuning.emu_align.data`
     for key, value in \
             new_cfg.llm.offsite_tuning.emu_align.data.items():
-        if key.startswith('__'):
+        if key.startswith('__') or (key not in new_cfg.data.keys()):
             continue
-        setattr(new_cfg, f'data.{key}', value)
+        setattr(new_cfg.data, f'{key}', value)
     # Used for data translator
     new_cfg.federate.client_num = 1
 
