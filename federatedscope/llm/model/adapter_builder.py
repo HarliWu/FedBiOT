@@ -251,6 +251,13 @@ class AdapterModel(nn.Module):
         for i in self.model.named_parameters():
             print(f"{i[0]} -> {i[1].device}")
 
+    def merge_and_unload(self):
+        if isinstance(self.model, PeftModel) and \
+                callable(self.model.merge_and_unload):
+            return self.model.merge_and_unload()
+        else:
+            return self.model
+
     @property
     def config(self):
         return self.model.config
