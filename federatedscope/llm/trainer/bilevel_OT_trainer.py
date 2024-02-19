@@ -166,7 +166,7 @@ def merged_lora_state_dict(adapter):
     for module in adapter.modules():
         if isinstance(module, Linear):
             module.merge()
-    
+
     state_dict = {}
     for key, value in adapter.state_dict().items():
         if 'lora' not in key.lower():
@@ -202,9 +202,9 @@ class OTTrainer_server(LLMTrainer):
             config.llm.offsite_tuning.emu_align.kl_divergence
         self.ground_truth_loss = ground_truth_loss
 
-        # Overwrite the train steps with emu_align hyper-parameters 
+        # Overwrite the train steps with emu_align hyper-parameters
         self.ctx.num_train_batch, self.ctx.num_train_batch_last_epoch, \
-        self.ctx.num_train_epoch, self.ctx.num_total_train_batch = \
+            self.ctx.num_train_epoch, self.ctx.num_total_train_batch = \
             calculate_batch_epoch_num(
                 config.llm.offsite_tuning.emu_align.train.local_update_steps,
                 config.llm.offsite_tuning.emu_align.train.batch_or_epoch,
@@ -359,11 +359,11 @@ class OTTrainer_client(LLMTrainer):
         # regularization loss between original and current adapters
         if hasattr(self.ctx, 'init_adap'):
             reg_loss = 0.0
-            
+
             # logger.info(ctx.model.adapter)
             # for name, mod in ctx.model.adapter.named_modules():
             #     logger.info(f'{name}, {type(mod)}, {mod}')
-            
+
             for init_adap_param, cur_adap_param in zip(
                     self.ctx.init_adap.values(),
                     merged_lora_state_dict(ctx.model.adapter).values()):

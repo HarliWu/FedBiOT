@@ -50,18 +50,17 @@ class FedOT_Server(OffsiteTuningServer):
             config=new_cfg,
             ground_truth_loss=enable_ground_truth,
             only_for_eval=False,
-            monitor=Monitor(self._cfg, 
-                            monitored_object=self))
+            monitor=Monitor(self._cfg, monitored_object=self))
 
         # pre-align
         for _ in range(self._cfg.llm.offsite_tuning.emu_align.train.
                        initial_update_rounds):
             self._emulator_fine_tuning()
 
-        # save pre-alignment checkpoint 
+        # save pre-alignment checkpoint
         path = add_prefix_to_path('0_', self._cfg.federate.save_to)
         self.aggregator.save_model(path, 0)
-        
+
         # reset if it is unnecessary for computing ground truth loss
         self.emu_trainer.ground_truth_loss = \
             config.llm.offsite_tuning.emu_align.train.enable_ground_truth

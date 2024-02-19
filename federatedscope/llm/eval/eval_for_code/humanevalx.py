@@ -49,7 +49,7 @@ def clean_answer(code, language_type=None):
         if n != num:
             s = " " * num + s[n:]
         return s
-    
+
     code = code.replace('\u00a0', '')
     if language_type.lower() == "python":
         end_words = ["\ndef", "\nclass", "\nif", "\n#", "\nprint", "\nassert"]
@@ -115,7 +115,8 @@ def evaluation(init_cfg, fschatbot):
                                     category='task_id',
                                     is_gzip=True)
         out_file = os.path.join(
-            init_cfg.outdir, f'{fschatbot.curpfx}humanevalx_{lang}_answer.jsonl')
+            init_cfg.outdir,
+            f'{fschatbot.curpfx}humanevalx_{lang}_answer.jsonl')
         answers = []
         for sample in tqdm(list_data_dict):
             input_text = LANGUAGE_TAG[lang] + '\n' + sample['instruction']
@@ -132,7 +133,7 @@ def evaluation(init_cfg, fschatbot):
             )
             try:
                 model_completions = fschatbot.generate(input_text,
-                                                        generate_kwargs)
+                                                       generate_kwargs)
             except torch.cuda.OutOfMemoryError() as error:
                 print(error)
                 model_completions = [
@@ -145,8 +146,8 @@ def evaluation(init_cfg, fschatbot):
                     dict(task_id=sample['category'], generation=completion))
                 if DEBUG:
                     print(f"task_id: {sample['category']},\n"
-                            f"generation {i + 1}:\n{completion}\n\n")
-                    
+                          f"generation {i + 1}:\n{completion}\n\n")
+
         # Save as samples.jsonl for eval pass@k score
         # Run `evaluate_functional_correctness samples.jsonl`
         with open(out_file, 'w') as f:
@@ -177,10 +178,10 @@ def main():
     # while True:
     #     try:
     #         evaluation(init_cfg, fschatbot)
-            
+
     #         print('load the next model...')
     #         fschatbot.next_model()
-        
+
     #     except Exception as err:
     #         print(f'{err}, so finished all evaluations....')
     #         break

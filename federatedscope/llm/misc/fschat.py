@@ -73,9 +73,8 @@ class FSChatBot(object):
         model_name, _ = self.config.model.type.split('@')
         self.tokenizer, _ = get_tokenizer(model_name, self.config.data.root,
                                           self.config.llm.tok_len)
-        
-        self.model = get_llm(self.config,
-                             device_map='auto')
+
+        self.model = get_llm(self.config, device_map='auto')
 
         logger.info("will use raw model.")
         print("will use raw model.")
@@ -98,8 +97,7 @@ class FSChatBot(object):
         self.tokenizer, _ = get_tokenizer(model_name, self.config.data.root,
                                           self.config.llm.tok_len)
 
-        self.model = get_llm(self.config,
-                             device_map='auto')
+        self.model = get_llm(self.config, device_map='auto')
         self.generation_config = GenerationConfig.from_pretrained(model_name)
         logger.info(f'{model_name} default generation setting: '
                     f'{self.generation_config}')
