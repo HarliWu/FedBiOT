@@ -182,6 +182,11 @@ def clean_answer(model_pred):
     return pred
 
 
+def partition(lst, size):
+    for i in range(0, len(lst), size):
+        yield lst[i : i+size]
+
+
 def main():
     init_cfg = global_cfg.clone()
     args = parse_args()
@@ -215,34 +220,35 @@ def main():
     results_display = open(os.path.join(init_cfg.outdir, 'test_results.txt'),
                            'w')
     answers = []
-    testset = tqdm(list_data_dict)
-    for sample in testset:
-        input_text = build_prompt(sample['instruction'], N_SHOT, COT_FLAG)
+    eval_size = 5 if init_cfg.llm.offsite_tuning.eval_type == 'emu' else 3
+    length = int(len(list_data_dict)/eval_size) + 1
+    testset = tqdm(range(length))
+    # testset = tqdm(partition(list_data_dict, eval_size))
+    for _, samples in zip(testset, partition(list_data_dict, eval_size)):
+        input_texts = [build_prompt(sample['instruction'], N_SHOT, COT_FLAG)
+                       for sample in samples]
         generate_kwargs = dict(max_new_tokens=256, top_p=0.95, temperature=0.8)
-        model_completion = fschatbot.generate(input_text, generate_kwargs)
-        model_answer = clean_answer(model_completion)
-        is_cor = is_correct(model_answer, sample['output'])
-        answers.append(is_cor)
-        if DEBUG:
-            print(f'Full input_text:\n{input_text}\n\n')
-        results_display.write(
-            f'Question {len(answers)}: {sample["instruction"]}\n\n'
-            f'Answers: {extract_answer_from_output(sample["output"])}\n\n'
-            f'Model Answers: {model_answer}\n\n'
-            f'Model Completion: {model_completion}\n\n'
-            f'Is correct: {is_cor}\n\n')
-        results_display.write('==========================\n\n')
-        results_display.flush()
-        testset.set_postfix({
-            'correct': sum(answers),
-            'rate': '{:.2f}%'.format(float(sum(answers)) / len(answers) * 100)
-        })
-        # print(f'Question: {sample["instruction"]}\n\n'
-        #       f'Answers: {extract_answer_from_output(sample["output"])}\n\n'
-        #       f'Model Answers: {model_answer}\n\n'
-        #       f'Model Completion: {model_completion}\n\n'
-        #       f'Is correct: {is_cor}\n\n')
-
+        responses = fschatbot.generate(input_texts, generate_kwargs)
+        for (input_text, sample, model_completion) in \
+                zip(input_texts, samples, responses):
+            model_answer = clean_answer(model_completion)
+            is_cor = is_correct(model_answer, sample['output'])
+            answers.append(is_cor)
+            if DEBUG:
+                print(f'Full input_text:\n{input_text}\n\n')
+            results_display.write(
+                f'Question {len(answers)}: {sample["instruction"]}\n\n'
+                f'Answers: {extract_answer_from_output(sample["output"])}\n\n'
+                f'Model Answers: {model_answer}\n\n'
+                f'Model Completion: {model_completion}\n\n'
+                f'Is correct: {is_cor}\n\n')
+            results_display.write('==========================\n\n')
+            results_display.flush()
+            testset.set_postfix({
+                'correct': sum(answers),
+                'rate': '{:.2f}%'.format(float(sum(answers)) / len(answers) * 100)
+            })
+            
     results_display.write(f'Num of total question: {len(answers)}, '
                           f'correct num: {sum(answers)}, '
                           f'correct rate: {float(sum(answers))/len(answers)}.')
