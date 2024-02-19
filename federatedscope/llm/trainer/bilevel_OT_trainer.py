@@ -186,6 +186,7 @@ class OTTrainer_server(LLMTrainer):
                  data,
                  device,
                  config,
+                 ground_truth_loss=False,
                  only_for_eval=False,
                  monitor=None):
         super(OTTrainer_server, self).__init__(adapter_model, data, device,
@@ -199,6 +200,7 @@ class OTTrainer_server(LLMTrainer):
             config.llm.offsite_tuning.emu_align.layerwise_distill
         self.kl_divergence = \
             config.llm.offsite_tuning.emu_align.kl_divergence
+        self.ground_truth_loss = ground_truth_loss
 
         # Overwrite the train steps with emu_align hyper-parameters 
         self.ctx.num_train_batch, self.ctx.num_train_batch_last_epoch, \
@@ -284,7 +286,10 @@ class OTTrainer_server(LLMTrainer):
         gap_loss = gap_loss_l2 + self.kd_loss_weight * gap_loss_kl
 
         # Define the loss
-        loss = gap_loss
+        if self.ground_truth_loss:
+            loss = gap_loss + outputs.loss
+        else:
+            loss = gap_loss
         # loss = gap_loss + self.kd_loss_weight * raw_loss
 
         if torch.isnan(loss):
@@ -304,7 +309,7 @@ class OTTrainer_server(LLMTrainer):
         logger.info(f'gap_loss: {gap_loss} ' +
                     f'({self.cfg.llm.offsite_tuning.emu_align.sim_loss}: ' +
                     f'{gap_loss_l2}, ' +
-                    f'kl: {gap_loss_kl}), raw loss: {raw_loss}')
+                    f'kl: {gap_loss_kl}), truth loss: {outputs.loss}')
 
         # ctx.model.train()
 
