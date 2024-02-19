@@ -10,15 +10,40 @@ transformers.logging.set_verbosity(40)
 
 from federatedscope.core.configs.config import global_cfg
 from federatedscope.core.cmd_args import parse_args, parse_client_cfg
-from federatedscope.llm.dataloader.dataloader import get_tokenizer
 from federatedscope.llm.model.model_builder import get_llm
-from federatedscope.llm.dataset.llm_dataset import PROMPT_DICT
+from federatedscope.llm.dataset.llm_dataset import PROMPT_DICT, DefaultToken
 from federatedscope.core.auxiliaries.utils import setup_seed
 from federatedscope.core.auxiliaries.logging import update_logger
 from federatedscope.llm.offsite_tuning.utils import \
     wrap_offsite_tuning_for_eval
 
 logger = logging.getLogger(__name__)
+
+
+def get_tokenizer(model_name, cache_dir, tok_len=128):
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name,
+        cache_dir=cache_dir,
+        model_max_length=tok_len,
+        padding_side="left",
+        use_fast=False,
+    )
+
+    special_tokens = dict()
+    if tokenizer.pad_token is None:
+        special_tokens["pad_token"] = DefaultToken.PAD_TOKEN.value
+    if tokenizer.eos_token is None:
+        special_tokens["eos_token"] = DefaultToken.EOS_TOKEN.value
+    if tokenizer.bos_token is None:
+        special_tokens["bos_token"] = DefaultToken.BOS_TOKEN.value
+    if tokenizer.unk_token is None:
+        special_tokens["unk_token"] = DefaultToken.UNK_TOKEN.value
+
+    num_new_tokens = tokenizer.add_special_tokens(special_tokens)
+
+    return tokenizer, num_new_tokens
 
 
 class FSChatBot(object):
@@ -116,16 +141,17 @@ class FSChatBot(object):
         else:
             raise ValueError('No more model is able to us')
 
+        self.model.to('cuda:0')
         self.model = self.model.eval()
         if torch.__version__ >= "2" and sys.platform != "win32":
             self.model = torch.compile(self.model)
 
-        # Create the generation pipeline
-        self.generation_pipe = pipeline('text-generation',
-                                        model=self.model,
-                                        tokenizer=self.tokenizer,
-                                        device_map='auto',
-                                        trust_remote_code='True')
+        # # Create the generation pipeline
+        # self.generation_pipe = pipeline('text-generation',
+        #                                 model=self.model,
+        #                                 tokenizer=self.tokenizer,
+        #                                 device_map='auto',
+        #                                 trust_remote_code='True')
 
         self.max_history_len = self.config.llm.chat.max_history_len
         self.max_len = self.config.llm.chat.max_len
@@ -163,40 +189,29 @@ class FSChatBot(object):
 
     @torch.no_grad()
     def generate(self, input_text, generate_kwargs={}):
-        if type(input_text) is str:
-            input_text_tokens = self.tokenizer(
-                input_text,
-                padding=False,
-                add_special_tokens=True,
-                return_tensors="pt",
-            )
-            input_ids = input_text_tokens.input_ids.to('cuda')
-            attention_mask = input_text_tokens.attention_mask.to('cuda')
-            # generate_kwargs['generation_config'] = self.generation_config
+        input_text_tokens = self.tokenizer(
+            input_text,
+            padding=True,
+            add_special_tokens=True,
+            return_tensors="pt",
+        )
+        input_ids = input_text_tokens.input_ids.to('cuda:0')
+        attention_mask = input_text_tokens.attention_mask.to('cuda:0')
 
-            output_ids = self.model.generate(input_ids=input_ids,
-                                             attention_mask=attention_mask,
-                                             **generate_kwargs)
+        output_ids = self.model.generate(input_ids=input_ids,
+                                         attention_mask=attention_mask,
+                                         **generate_kwargs)
 
-            response = []
-            for i in range(output_ids.shape[0]):
-                response.append(
-                    self.tokenizer.decode(output_ids[i][input_ids.shape[1]:],
-                                          skip_special_tokens=True,
-                                          ignore_tokenization_space=True))
+        response = []
+        for i in range(output_ids.shape[0]):
+            response.append(
+                self.tokenizer.decode(output_ids[i][input_ids.shape[1]:],
+                                      skip_special_tokens=True,
+                                      ignore_tokenization_space=True))
 
-            if len(response) > 1:
-                return response
-            return response[0]
-
-        else:
-            response = self.generation_pipe(input_text,
-                                            return_full_text=False,
-                                            **generate_kwargs)
-
-            if len(response) > 1:
-                return [ans['generated_text'] for ans in response]
-            return response[0]['generated_text']
+        if len(response) > 1:
+            return response
+        return response[0]
 
     def clear(self):
         self.history = []

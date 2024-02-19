@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from peft.tuners.lora import Linear
 import logging
 import copy
 import gc
@@ -8,6 +9,7 @@ from federatedscope.llm.trainer.trainer import LLMTrainer
 from federatedscope.core.trainers.context import CtxVar
 from federatedscope.core.trainers.enums import LIFECYCLE
 from federatedscope.core.monitors.monitor import Monitor
+from federatedscope.core.trainers.utils import calculate_batch_epoch_num
 from federatedscope.llm.model.adapter_builder import AdapterModel
 from federatedscope.llm.dataset.llm_dataset import DefaultToken
 
@@ -160,6 +162,23 @@ def _get_batch_logps(logits, labels, average_log_prob=False):
         return (per_token_logps * loss_mask).sum(-1)
 
 
+def merged_lora_state_dict(adapter):
+    for module in adapter.modules():
+        if isinstance(module, Linear):
+            module.merge()
+    
+    state_dict = {}
+    for key, value in adapter.state_dict().items():
+        if 'lora' not in key.lower():
+            state_dict[key] = value
+
+    for module in adapter.modules():
+        if isinstance(module, Linear):
+            module.unmerge()
+
+    return state_dict
+
+
 class OTTrainer_server(LLMTrainer):
     def __init__(self,
                  raw_model: AdapterModel,
@@ -167,6 +186,7 @@ class OTTrainer_server(LLMTrainer):
                  data,
                  device,
                  config,
+                 ground_truth_loss=False,
                  only_for_eval=False,
                  monitor=None):
         super(OTTrainer_server, self).__init__(adapter_model, data, device,
@@ -180,6 +200,18 @@ class OTTrainer_server(LLMTrainer):
             config.llm.offsite_tuning.emu_align.layerwise_distill
         self.kl_divergence = \
             config.llm.offsite_tuning.emu_align.kl_divergence
+        self.ground_truth_loss = ground_truth_loss
+
+        # Overwrite the train steps with emu_align hyper-parameters 
+        self.ctx.num_train_batch, self.ctx.num_train_batch_last_epoch, \
+        self.ctx.num_train_epoch, self.ctx.num_total_train_batch = \
+            calculate_batch_epoch_num(
+                config.llm.offsite_tuning.emu_align.train.local_update_steps,
+                config.llm.offsite_tuning.emu_align.train.batch_or_epoch,
+                self.ctx.get('num_train_data'),
+                config.dataloader.batch_size,
+                config.dataloader.drop_last
+            )
 
     # def _hook_on_fit_start_numerical_precision(self, ctx):
     #     super(OTTrainer_server,
@@ -254,7 +286,10 @@ class OTTrainer_server(LLMTrainer):
         gap_loss = gap_loss_l2 + self.kd_loss_weight * gap_loss_kl
 
         # Define the loss
-        loss = gap_loss
+        if self.ground_truth_loss:
+            loss = gap_loss + outputs.loss
+        else:
+            loss = gap_loss
         # loss = gap_loss + self.kd_loss_weight * raw_loss
 
         if torch.isnan(loss):
@@ -274,7 +309,7 @@ class OTTrainer_server(LLMTrainer):
         logger.info(f'gap_loss: {gap_loss} ' +
                     f'({self.cfg.llm.offsite_tuning.emu_align.sim_loss}: ' +
                     f'{gap_loss_l2}, ' +
-                    f'kl: {gap_loss_kl}), raw loss: {raw_loss}')
+                    f'kl: {gap_loss_kl}), truth loss: {outputs.loss}')
 
         # ctx.model.train()
 
@@ -292,7 +327,8 @@ class OTTrainer_client(LLMTrainer):
             config.llm.offsite_tuning.emu_align.train.lm_loss_weight
 
     def train(self, target_data_split_name="train", hooks_set=None):
-        self.ctx.init_adap = copy.deepcopy(self.ctx.model.adapter.state_dict())
+        self.ctx.init_adap = copy.deepcopy(
+            merged_lora_state_dict(self.ctx.model.adapter))
         num_samples, model_para_all, eval_metrics = \
             super(OTTrainer_client, self).train(target_data_split_name,
                                                 hooks_set)
@@ -323,9 +359,14 @@ class OTTrainer_client(LLMTrainer):
         # regularization loss between original and current adapters
         if hasattr(self.ctx, 'init_adap'):
             reg_loss = 0.0
+            
+            # logger.info(ctx.model.adapter)
+            # for name, mod in ctx.model.adapter.named_modules():
+            #     logger.info(f'{name}, {type(mod)}, {mod}')
+            
             for init_adap_param, cur_adap_param in zip(
                     self.ctx.init_adap.values(),
-                    ctx.model.adapter.state_dict().values()):
+                    merged_lora_state_dict(ctx.model.adapter).values()):
                 reg_loss += torch.sum((init_adap_param - cur_adap_param)**2)
 
             loss = loss + self.lm_loss_weight * reg_loss

@@ -78,6 +78,7 @@ def extend_llm_cfg(cfg):
     cfg.llm.offsite_tuning.emu_align = CN()
     cfg.llm.offsite_tuning.emu_align.use = False
     cfg.llm.offsite_tuning.emu_align.initial_only = True
+    cfg.llm.offsite_tuning.emu_align.init_enable_ground_truth = False
     cfg.llm.offsite_tuning.emu_align.sim_loss = 'l2'  # Choose one of
     # `['cos', 'l2']`
     cfg.llm.offsite_tuning.emu_align.layerwise_distill = False
@@ -99,6 +100,7 @@ def extend_llm_cfg(cfg):
     cfg.llm.offsite_tuning.emu_align.train.batch_or_epoch = 'batch'
     cfg.llm.offsite_tuning.emu_align.train.lm_loss_weight = 0.1
     cfg.llm.offsite_tuning.emu_align.train.kd_loss_weight = 0.9
+    cfg.llm.offsite_tuning.emu_align.train.enable_ground_truth = False
 
     cfg.llm.offsite_tuning.emu_align.train.optimizer = CN(new_allowed=True)
     cfg.llm.offsite_tuning.emu_align.train.optimizer.type = 'SGD'

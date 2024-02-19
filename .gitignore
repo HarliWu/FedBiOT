@@ -139,7 +139,13 @@ dmypy.json
 **/.DS_Store
 
 # No experiment results 
-/exp
+exp*/
+*.sh
+*_yaml/
+*dolly*/
+data/
+checkpoints*/
+benchmark_output/
 
 # No new scripts 
 /scripts_*
