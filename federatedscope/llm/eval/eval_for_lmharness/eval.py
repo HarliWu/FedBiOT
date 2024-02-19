@@ -4,7 +4,10 @@
 import torch
 
 from lm_eval.models.huggingface import HFLM
-from lm_eval import evaluator
+from lm_eval.tasks import TaskManager
+from lm_eval import evaluator, tasks
+import lm_eval.tasks.hellaswag as hellaswag
+from lm_eval.api.registry import ALL_TASKS
 
 from federatedscope.core.configs.config import global_cfg
 from federatedscope.core.cmd_args import parse_args, parse_client_cfg
@@ -14,10 +17,18 @@ from federatedscope.llm.misc.fschat import FSChatBot
 
 
 class LMEvaluator(HFLM):
-    def __init__(self, fschatbot:FSChatBot):
-        super().__init__(pretrained=fschatbot.model, 
+    def __init__(self, fschatbot: FSChatBot):
+        super().__init__(pretrained=fschatbot.model.model,
                          backend="causal",
-                         tokenizer=fschatbot.tokenizer)
+                         tokenizer=fschatbot.tokenizer,
+                         device='cuda')
+
+        self._rank = 0
+
+    def loglikelihood(self, requests):
+        for i in range(20):
+            print(requests[i].request_type)
+        super().loglikelihood(requests)
 
 
 @torch.no_grad()
@@ -37,13 +48,20 @@ def main():
     #    in yaml file federate.save_to
     fschatbot = FSChatBot(init_cfg)
 
-    # Load to the evaluator 
+    task_manager = TaskManager()
+    # print(task_manager.all_tasks)
+    task_names = task_manager.match_tasks(['hellaswag'])
+    # Load to the evaluator
     results = evaluator.simple_evaluate(
-        model=LMEvaluator(fschatbot), 
-        task=['hellaswag'], 
-        write_out=True
+        model=LMEvaluator(fschatbot),
+        tasks=task_names,
+        write_out=False,
+        device='cuda:0',
+        batch_size='auto',
+        max_batch_size=50,
     )
+    print(results)
 
-    
+
 if __name__ == "__main__":
     main()
