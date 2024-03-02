@@ -133,3 +133,59 @@ class LLMDataset(Dataset):
     #         self.preprocess([source], [llm_answer], self.tokenizer)
     #     self.input_ids[i], self.labels[i] = \
     #         llm_result_tknz['input_ids'][0], llm_result_tknz['labels'][0]
+
+
+class LLMComparisonDataset(Dataset):
+    def __init__(self,
+                 list_data_dict,
+                 tokenizer,
+                 prompt_input=PROMPT_DICT["prompt_input"],
+                 prompt_no_input=PROMPT_DICT["prompt_no_input"],
+                 output_A='output_A',
+                 output_B='output_B',
+                 choice='choice'):
+        for example in list_data_dict:
+            if int(example[choice]) == 1:
+                # output_B is better than output_A
+                example[output_A], example[output_B] = \
+                    example[output_B], example[output_A]
+
+        # After switching, output_A > output_B
+        self.win_dataset = LLMDataset(list_data_dict=list_data_dict,
+                                      tokenizer=tokenizer,
+                                      prompt_input=prompt_input,
+                                      prompt_no_input=prompt_no_input,
+                                      output_tag=output_A)
+        self.lose_dataset = LLMDataset(list_data_dict=list_data_dict,
+                                       tokenizer=tokenizer,
+                                       prompt_input=prompt_input,
+                                       prompt_no_input=prompt_no_input,
+                                       output_tag=output_B)
+
+        categories = [
+            example['category'] if 'category' in example else None
+            for example in list_data_dict
+        ]
+        df = pd.DataFrame(categories, columns=["category"])
+        self.categories = list(pd.Categorical(df["category"]).codes)
+
+        # super(LLMComparisonDataset, self).__init__(
+        #     list_data_dict, tokenizer, prompt_input,
+        #     prompt_no_input, output_A)
+
+        # self.win_labels = self.labels
+
+        # targets_B = [
+        #     f"{example[output_B]}{tokenizer.eos_token}"
+        #     for example in list_data_dict
+        # ]
+        # data_dict_B = self.preprocess(self.sources, targets_B, tokenizer)
+        # self.lose_labels = data_dict_B["labels"]
+
+    def __len__(self):
+        return len(self.win_dataset)
+
+    def __getitem__(self, i):
+        return dict(win_data=self.win_dataset[i],
+                    lose_data=self.lose_dataset[i],
+                    categories=self.categories[i])

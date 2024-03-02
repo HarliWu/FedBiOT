@@ -1,5 +1,10 @@
 from federatedscope.llm.model.adapter_builder import AdapterModel
+from federatedscope.core.configs.config import global_cfg
 import torch
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def get_model_from_huggingface(model_name, config, **kwargs):
@@ -28,7 +33,24 @@ def get_llm(config, **kwargs):
 
     model_config = config.model
     model_name, model_hub = model_config.type.split('@')
-    if model_hub == 'huggingface_llm':
+
+    if config.model.load_from_local_pretrained_fs_config != '':
+        # load model from local pretrained model
+        pretrained_cfg = global_cfg.clone()
+        pretrained_cfg.merge_from_file(
+            config.model.load_from_local_pretrained_fs_config)
+        assert pretrained_cfg.model.type.split('@')[0] == model_name, \
+            'Two models cannot match. Failed to load from pretrained.'
+        pretrained_model = get_llm(pretrained_cfg, **kwargs)
+        if config.model.load_from_local_pretrained_model_path != '':
+            path = config.model.load_from_local_pretrained_model_path
+            ckpt = torch.load(path, map_location='cpu')
+            logger.info('Successfully import the pretrained model '
+                        'from the checkpoint. ')
+            pretrained_model.load_state_dict(ckpt['model'])
+        model = pretrained_model.merge_and_unload()
+        logger.info(type(model))
+    elif model_hub == 'huggingface_llm':
         model = get_model_from_huggingface(model_name=model_name,
                                            config=config,
                                            **kwargs)

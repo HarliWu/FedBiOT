@@ -1,6 +1,7 @@
 import os
 import gzip
 import json
+import pickle
 import random
 import logging
 import torch
@@ -42,6 +43,33 @@ class LLMDataCollator(object):
         )
 
 
+@dataclass
+class LLMRewardCollator():
+    """Collate examples for supervised fine-tuning."""
+
+    tokenizer: transformers.PreTrainedTokenizer
+
+    def __call__(self, instances):
+        win_data, lose_data = \
+            tuple([instance[key] for instance in instances]
+                  for key in ("win_data", "lose_data"))
+
+        # Form a concatenated dataset
+        concat_data = win_data + lose_data
+        concat_data_collator = LLMDataCollator(tokenizer=self.tokenizer)
+        concat_data_dict = concat_data_collator(concat_data)
+
+        return dict(
+            win_input_ids=concat_data_dict["input_ids"][:len(win_data)],
+            win_labels=concat_data_dict["labels"][:len(win_data)],
+            win_attention_mask=concat_data_dict["attention_mask"]
+            [:len(win_data)],
+            lose_input_ids=concat_data_dict["input_ids"][len(win_data):],
+            lose_labels=concat_data_dict["labels"][len(win_data):],
+            lose_attention_mask=concat_data_dict["attention_mask"]
+            [len(win_data):])
+
+
 class Predictor:
     """Generate the output from the original LLM model"""
     def __init__(self, config, tokenizer, generate_kwargs=None):
@@ -78,15 +106,24 @@ class Predictor:
 
 
 def get_tokenizer(model_name, cache_dir, tok_len=128):
-    from transformers import AutoTokenizer
+    from transformers import AutoTokenizer, GPT2Tokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name,
-        cache_dir=cache_dir,
-        model_max_length=tok_len,
-        padding_side="right",
-        use_fast=False,
-    )
+    if model_name == 'CarperAI/openai_summarize_tldr_sft':
+        tokenizer = GPT2Tokenizer.from_pretrained(
+            'gpt2',
+            cache_dir=cache_dir,
+            model_max_length=tok_len,
+            padding_side="right",
+            use_fast=False,
+        )
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            cache_dir=cache_dir,
+            model_max_length=tok_len,
+            padding_side="right",
+            use_fast=False,
+        )
 
     special_tokens = dict()
     if tokenizer.pad_token is None:
@@ -384,6 +421,25 @@ def load_llm_dataset(config=None, **kwargs):
 
     elif dataset_name.lower() == 'wikitext-2':
         pass
+
+    elif dataset_name.lower() == 'reddit-tldr':
+        from federatedscope.llm.dataloader.reddit_tldr import \
+            load_human_annotated_dataset
+        dataset = load_human_annotated_dataset(config.data.root, tokenizer)
+
+    elif dataset_name.lower() == 'reddit-tldr-comparison':
+        from federatedscope.llm.dataloader.reddit_tldr import \
+            load_comparison_dataset
+        data_root = os.path.join(config.data.root, 'reddit-tldr-comparison')
+        dataset = load_comparison_dataset(data_root, tokenizer)
+
+    elif dataset_name.lower() == 'reddit-tldr-comparison-choice':
+        from federatedscope.llm.dataloader.reddit_tldr import \
+            load_comparison_dataset_by_choice
+        data_root = os.path.join(config.data.root, 'reddit-tldr-comparison')
+        dataset = load_comparison_dataset_by_choice(data_root,
+                                                    tokenizer,
+                                                    max_num_test=1000)
 
     else:
         raise ValueError(f'Not support data type {dataset_name}.')

@@ -49,6 +49,10 @@ def extend_model_cfg(cfg):
     cfg.model.contrast_topk = 100
     cfg.model.contrast_temp = 1.0
 
+    # Restore model from local pretrained (only for LLM)
+    cfg.model.load_from_local_pretrained_fs_config = ''
+    cfg.model.load_from_local_pretrained_model_path = ''
+
     # ---------------------------------------------------------------------- #
     # Criterion related options
     # ---------------------------------------------------------------------- #

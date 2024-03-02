@@ -1,7 +1,10 @@
 import random
 import numpy as np
+import logging
 
 from federatedscope.core.splitters import BaseSplitter
+
+logger = logging.getLogger(__name__)
 
 
 class MetaSplitter(BaseSplitter):
@@ -31,6 +34,12 @@ class MetaSplitter(BaseSplitter):
         for cat in categories:
             idx_slice.append(np.where(np.array(label) == cat)[0].tolist())
         random.shuffle(idx_slice)
+
+        # print the size of each categories
+        for i, cat in enumerate(categories):
+            logger.info(f'Index: {i}\t'
+                        f'Category: {cat}\t'
+                        f'Size: {len(idx_slice[i])}')
 
         # Merge to client_num pieces
         new_idx_slice = []

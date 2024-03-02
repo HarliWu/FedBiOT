@@ -6,7 +6,7 @@ def extend_training_cfg(cfg):
     # ---------------------------------------------------------------------- #
     # Trainer related options
     # ---------------------------------------------------------------------- #
-    cfg.trainer = CN()
+    cfg.trainer = CN(new_allowed=True)
 
     cfg.trainer.type = 'general'
 
