@@ -3,6 +3,7 @@ import numpy as np
 import logging
 
 from federatedscope.core.splitters import BaseSplitter
+from federatedscope.core.splitters.generic import IIDSplitter
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,8 @@ class MetaSplitter(BaseSplitter):
     """
     def __init__(self, client_num, **kwargs):
         super(MetaSplitter, self).__init__(client_num)
+        # Create an IID spliter in case that num_client < categories
+        self.iid_spliter = IIDSplitter(client_num)
 
     def __call__(self, dataset, prior=None, **kwargs):
         from torch.utils.data import Dataset, Subset
@@ -40,6 +43,13 @@ class MetaSplitter(BaseSplitter):
             logger.info(f'Index: {i}\t'
                         f'Category: {cat}\t'
                         f'Size: {len(idx_slice[i])}')
+
+        if len(categories) < self.client_num:
+            logger.warning(
+                f'The number of clients is {self.client_num}, which is '
+                f'smaller than a total of {len(categories)} catagories, '
+                'use iid splitter instead.')
+            return self.iid_spliter(dataset)
 
         # Merge to client_num pieces
         new_idx_slice = []
