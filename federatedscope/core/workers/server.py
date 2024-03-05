@@ -109,9 +109,17 @@ class Server(BaseServer):
                 logger.warning(f'Invalid `restore_from`:'
                                f' {self._cfg.federate.restore_from}.')
             else:
-                _ = self.aggregator.load_model(self._cfg.federate.restore_from)
+                comm_round = \
+                    self.aggregator.load_model(self._cfg.federate.restore_from)
                 logger.info(f"Restored the model from "
                             f"{self._cfg.federate.restore_from}")
+                # See if we resume from the last checkpoint
+                _, save_fname = os.path.split(self._cfg.federate.save_to)
+                if save_fname in self._cfg.federate.restore_from:
+                    self.state = comm_round
+                    logger.info(
+                        "The training resumes from the last checkpoint "
+                        f"at {comm_round}-th round. ")
 
         if int(config.model.model_num_per_trainer) != \
                 config.model.model_num_per_trainer or \
@@ -179,6 +187,11 @@ class Server(BaseServer):
                 sample_strategy=self._cfg.federate.sampler,
                 client_num=self.client_num,
                 client_info=None)
+            # Initialize the sampler when loading from last checkpoint
+            if self.sample_client_num > 0:
+                for _ in range(self.state):
+                    temp = self.sampler.sample(size=self.sample_client_num)
+                    self.sampler.change_state(temp, 'idle')
         else:
             # Some type of sampler would be instantiated in trigger_for_start,
             # since they need more information

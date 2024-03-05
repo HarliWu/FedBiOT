@@ -58,7 +58,7 @@ class ClientsAvgAggregator(Aggregator):
         assert self.model is not None
 
         if os.path.exists(path):
-            ckpt = torch.load(path, map_location=self.device)
+            ckpt = torch.load(path, map_location='cpu')
             self.model.load_state_dict(ckpt['model'])
             return ckpt['cur_round']
         else:
