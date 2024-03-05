@@ -92,7 +92,7 @@ class ArtifactDataset(FSChatBot):
         self.config = config
 
         if config.train.is_enable_half:
-            self.model.half().to(self.device)
+            self.model.to(torch.bfloat16).to(self.device)
         else:
             self.model.to(self.device)
         self.model = self.model.eval()

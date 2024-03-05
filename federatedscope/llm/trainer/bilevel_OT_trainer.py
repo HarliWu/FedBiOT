@@ -217,7 +217,7 @@ class OTTrainer_server(LLMTrainer):
     #     super(OTTrainer_server,
     #           self)._hook_on_fit_start_numerical_precision(ctx)
     #     if self.cfg.train.is_enable_half:
-    #         ctx.raw_model = ctx.raw_model.half()
+    #         ctx.raw_model.to(torch.bfloat16)
 
     def train(self, target_data_split_name="train", hooks_set=None):
         self.ctx.raw_model.to(self.ctx.device)

@@ -162,7 +162,7 @@ class GeneralTorchTrainer(Trainer):
 
     def _hook_on_fit_start_numerical_precision(self, ctx):
         # if self.cfg.train.is_enable_half:
-        #     ctx.model = ctx.model.half()
+        #     ctx.model.to(torch.bfloat16)
         pass
 
     def _hook_on_data_parallel_init(self, ctx):

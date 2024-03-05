@@ -107,7 +107,7 @@ class LLMTrainer(GeneralTorchTrainer):
     #     if self.cfg.train.is_enable_half:
     #         if not ctx.cfg.llm.deepspeed.use and \
     #            not ctx.cfg.llm.accelerator.use:
-    #             ctx.model = ctx.model.half()
+    #             ctx.model.to(torch.bfloat16)
 
     def _hook_on_fit_start_init(self, ctx):
         if ctx.cfg.llm.accelerator.use:

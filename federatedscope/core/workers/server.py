@@ -95,7 +95,7 @@ class Server(BaseServer):
                 and not self._cfg.llm.deepspeed.use \
                 and not self._cfg.llm.accelerator.use:
             # if self._cfg.train.is_enable_half:
-            #     model = model.half()
+            #     model.to(torch.bfloat16)
             # put the model to the specified device
             model.to(device)
         # Build aggregator
