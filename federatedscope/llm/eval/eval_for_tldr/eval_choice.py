@@ -1,8 +1,8 @@
 import re
+import logging
 import torch
+from torch.utils.data import DataLoader
 import os
-import random
-import transformers
 from transformers import GenerationConfig
 from tqdm import tqdm
 
@@ -10,10 +10,30 @@ from federatedscope.core.configs.config import global_cfg
 from federatedscope.core.cmd_args import parse_args, parse_client_cfg
 from federatedscope.core.auxiliaries.utils import setup_seed
 from federatedscope.core.auxiliaries.logging import update_logger
-from federatedscope.core.data.utils import download_url
-from federatedscope.llm.dataloader.dataloader import load_jsonl
-from federatedscope.llm.dataloader.reddit_tldr import _download_tldr_cmpr
-from federatedscope.llm.misc.fschat import FSChatBot
+from federatedscope.llm.dataloader.reddit_tldr import \
+    load_comparison_dataset_by_choice
+from federatedscope.llm.model.model_builder import get_llm
+from federatedscope.llm.dataloader import get_tokenizer, LLMDataCollator
+from federatedscope.llm.dataset.llm_dataset import DefaultToken
+
+logger = logging.getLogger(__name__)
+
+
+def cal_acc(logits, labels, choices):
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = labels[..., 1:].contiguous()
+
+    new_labels = torch.full_like(shift_labels, DefaultToken.IGNORE_INDEX.value)
+    for idx, choice in enumerate(choices):
+        new_labels[shift_labels == choice] = idx
+
+    new_labels = new_labels.view(-1)
+    new_logits = shift_logits[..., choices].view(-1, len(choices))
+    new_logits = new_logits[(new_labels != DefaultToken.IGNORE_INDEX.value), :]
+    new_labels = new_labels[(new_labels != DefaultToken.IGNORE_INDEX.value)]
+    _, predicted = new_logits.max(1)
+
+    return new_labels, predicted, predicted.eq(new_labels).sum().item()
 
 
 @torch.no_grad()
@@ -31,97 +51,114 @@ def main():
 
     init_cfg.freeze()
 
-    # load your finetuned model (saved as xxx.ckpt)
-    #    in yaml file federate.save_to
-    fschatbot = FSChatBot(init_cfg)
+    # get model and tokenizer
+    model_name, _ = init_cfg.model.type.split('@')
+    model = get_llm(init_cfg, device_map='auto')
+    tokenizer, _ = get_tokenizer(model_name, init_cfg.data.root,
+                                 init_cfg.llm.tok_len)
 
-    _, _, list_data_dict = _download_tldr_cmpr(
-        os.path.join(init_cfg.data.root, 'reddit-tldr-comparison'))
+    # load model from checkpoint
+    num_ckpt = \
+        init_cfg.federate.total_round_num // init_cfg.federate.save_freq
+    prefix = ['final_'] + \
+             [str(i*init_cfg.federate.save_freq) + '_'
+              for i in range(num_ckpt, -1, -1)] + ['']
+    dirname, filename = os.path.split(init_cfg.federate.save_to)
+    for pre in prefix:
+        print(os.path.join(dirname, pre + filename))
+        if os.path.exists(os.path.join(dirname, pre + filename)):
+            ckpt_path = os.path.join(dirname, pre + filename)
+            ckpt = torch.load(ckpt_path, map_location='cpu')
+            model.load_state_dict(ckpt['model'])
+            print(f'Model of Round {ckpt["cur_round"]} loads '
+                  f'from the checkpoint {ckpt_path}')
+            break
+    # model = model.merge_and_unload()
 
-    prompt = ("Below is a forum post followed by two summaries. "
-              "Pick a more precise and concise one that summarizes the most "
-              "important points in the given forum post, without including "
-              "unimportant or irrelevant details. "
-              "State your choice by strictly following this format: "
-              "\"A\" if summary A is better, "
-              "\"B\" if summary B is better.\n\n"
-              "### Subreddit:\n{subreddit}\n\n### Title:\n{title}\n\n"
-              "### Post:\n{post}\n\n### Summary A:{summary_A}\n\n"
-              "### Summary B:{summary_B}\n\n"
-              "### Your choice:\n")
+    # load dataset
+    data_root = os.path.join(init_cfg.data.root, 'reddit-tldr-comparison')
+    _, _, test_dataset = load_comparison_dataset_by_choice(data_root=data_root,
+                                                           tokenizer=tokenizer)
 
     prompt = ("Below is a forum post followed by two summaries. "
               "Pick a more precise and concise one that summarizes the most "
               "important points in the given forum post, without including "
               "unimportant or irrelevant details. State your choice with a "
-              "single capital letter, i.e., \"A\" if summary A is better, "
-              "\"B\" if summary B is better.\n\n"
-              "### Subreddit:\n{subreddit}\n\n### Title:\n{title}\n\n"
-              "### Post:\n{post}\n\n### Summary A:\n{summary_A}\n\n"
-              "### Summary B:\n{summary_B}\n\n### Your choice:")
+              "single capital letter, i.e., \"A\" if SUMMARY A is better, "
+              "\"B\" if SUMMARY B is better.\n\n"
+              "### SUBREDDIT: r/{subreddit}\n"
+              "### TITLE: {title}\n"
+              "### POST: {post}\n"
+              "### SUMMARY A:{summary_A}\n"
+              "### SUMMARY B:{summary_B}\n"
+              "### YOUR CHOICE:")
 
     # list all choices
     choices = []
     for choice in init_cfg.trainer.choices:
-        choices.append(fschatbot.tokenizer(f':{choice}')[2:]['input_ids'][0])
-
-    forward_model = fschatbot.model.merge_and_unload()
+        choices.append(tokenizer(f'{choice}')['input_ids'][-1])
 
     correct, total = 0, 0
 
     # Print result to a text file
     results_display = open(os.path.join(init_cfg.outdir, 'test_results.txt'),
                            'w')
-    testset = tqdm(list_data_dict)
-    for sample in testset:
-        input_text = prompt.format_map(sample)
-        input_text = input_text.replace('### Summary A: ', '### Summary A:\n')
-        input_text = input_text.replace('### Summary B: ', '### Summary B:\n')
-        # results_display.write(input_text)
+    eval_size = 10
+    correct, total = 0, 0
+    dataloader = DataLoader(dataset=test_dataset,
+                            batch_size=10,
+                            shuffle=False,
+                            collate_fn=LLMDataCollator(tokenizer=tokenizer))
 
-        generation_config = GenerationConfig(
-            temperature=0.25,
-            early_stopping=True,
-            num_beams=2,
-            no_repeat_ngram_size=2,
-            do_sample=True,
-        )
-        generate_kwargs = dict(
-            generation_config=generation_config,
-            max_new_tokens=10,
-        )
-        model_completion = fschatbot.generate(input_text, generate_kwargs)
-        input_text_tokens = fschatbot.tokenizer(
-            input_text,
-            padding=True,
-            add_special_tokens=True,
-            return_tensors="pt",
-        )
-        input_ids = input_text_tokens.input_ids.to('cuda:0')
-        attention_mask = input_text_tokens.attention_mask.to('cuda:0')
-        outputs = forward_model(input_ids=input_ids,
-                                attention_mask=attention_mask)
-        logits = outputs.logits
-        model_choices = []
-        for i in range(logits.shape[0]):
-            new_logit = logits[i][-1][choices].unsqueeze(0)
-            _, predicted = new_logit.max(1)
-            model_choices.append(chr(predicted[0] + ord('A')))
+    test_batches = tqdm(dataloader)
+    for data_batch in test_batches:
+        input_ids = data_batch["input_ids"].to('cuda:0')
+        labels = data_batch["labels"].to('cuda:0')
+        attention_mask = data_batch["attention_mask"].to('cuda:0')
 
-        if chr(sample["choice"] + ord("A")) == model_choices[0]:
-            correct += 1
-        total += 1
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
 
-        results_display.write(
-            f'Post:\n{sample["post"]}\n\n'
-            f'Summary A:\n{sample["summary_A"]}\n\n'
-            f'Summary B:\n{sample["summary_B"]}\n\n'
-            f'Human selected: {chr(sample["choice"]+ord("A"))}\n\n'
-            f'Model-generated summary: {model_completion}\n\n'
-            f'Model-choice: {model_choices[0]}\n\n')
+        # calculate the correctness
+        new_labels, predicted, batch_correct = \
+            cal_acc(outputs.logits, labels, choices)
 
+        # extract the first result
+        first_input = tokenizer.decode(
+            input_ids[0][input_ids[0] != tokenizer.pad_token_id],
+            skip_special_tokens=True)
+        first_expected_choice = chr(new_labels[0] + ord('A'))
+        first_actual_choice = chr(predicted[0] + ord('A'))
+
+        # format the input
+        sample = {
+            "post": "POST: ",
+            "summary_A": "SUMMARY A: ",
+            "summary_B": "SUMMARY B: ",
+        }
+        for seg in first_input.split("### "):
+            for key in sample.keys():
+                if sample[key] in seg:
+                    sample[key] = seg.replace(sample[key], '')
+                    break
+
+        # write the first input and results to file
+        results_display.write(f'Post:\n{sample["post"]}\n\n'
+                              f'Summary A:\n{sample["summary_A"]}\n\n'
+                              f'Summary B:\n{sample["summary_B"]}\n\n'
+                              f'Human selected: {first_expected_choice}\n\n'
+                              f'Model-choice: {first_actual_choice}\n\n')
         results_display.write('==========================\n\n')
         results_display.flush()
+
+        # Display the final result on screen
+        total = total + new_labels.size(0)
+        correct = correct + batch_correct
+
+        test_batches.set_postfix({
+            'correct': correct,
+            'total': total,
+            'rate': '{:.2f}%'.format(correct / total * 100)
+        })
 
     results_display.write(f'Correct rates: {correct/total*100}% '
                           f'({correct}/{total})')
