@@ -1,5 +1,6 @@
 import torch
 import logging
+import gc
 
 try:
     import deepspeed
@@ -55,6 +56,21 @@ class LLMTrainer(GeneralTorchTrainer):
         self.tokenizer, _ = get_tokenizer(model_name, config.data.root,
                                           config.llm.tok_len)
         self.eval_metrics = config.eval.metrics
+
+    def register_default_hooks_train(self):
+        super().register_default_hooks_train()
+        self.register_hook_in_train(self._hook_on_fit_end_free_space,
+                                    "on_fit_end")
+
+    def register_default_hooks_ft(self):
+        super().register_default_hooks_ft()
+        self.register_hook_in_ft(self._hook_on_fit_end_free_space,
+                                 "on_fit_end")
+
+    def register_default_hooks_eval(self):
+        super().register_default_hooks_eval()
+        self.register_hook_in_eval(self._hook_on_fit_end_free_space,
+                                   "on_fit_end")
 
     @lifecycle(LIFECYCLE.BATCH)
     def _run_batch(self, hooks_set, run_step=-1):
@@ -282,7 +298,7 @@ class LLMTrainer(GeneralTorchTrainer):
         }
         setattr(ctx, 'eval_metrics', eval_results)
 
-        # TODO: make this as a hook function
+    def _hook_on_fit_end_free_space(self, ctx):
         # Move trainable part to `cpu`, which can save memory but cost time
         if ctx.cfg.llm.adapter.mv_to_cpu:
             for p in ctx.model.parameters():
@@ -290,6 +306,10 @@ class LLMTrainer(GeneralTorchTrainer):
                     p.data = p.to('cpu')
                     if p.grad is not None:
                         p.grad.data = p.grad.to('cpu')
+
+        # free the space
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def _hook_on_batch_forward_flop_count(self, ctx):
         """
