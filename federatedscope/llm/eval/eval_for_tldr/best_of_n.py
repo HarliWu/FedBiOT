@@ -85,7 +85,6 @@ def best_of_n_dataset(init_cfg, gen_cfg=None, n=16):
         # create the dataset
         list_data_dict = _generate_best_of_n_dataset(gen_cfg, n)
         json.dump(list_data_dict, gen_fp)
-        exit(-1)
     return list_data_dict
 
 
