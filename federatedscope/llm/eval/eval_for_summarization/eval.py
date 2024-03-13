@@ -56,56 +56,61 @@ def main():
               "### Subreddit:\n{subreddit}\n\n### Title:\n{title}\n\n"
               "### Post:\n{post}\n\n### TL; DR:")
 
-    while True:
-        try:
-            results_display = os.path.join(
-                init_cfg.outdir, f'{fschatbot.curpfx}_summarization.txt')
-            results_display = open(results_display, 'w')
-            predictions, references = [], []
+    try:
+        results_display = os.path.join(
+            init_cfg.outdir, f'{fschatbot.curpfx}_summarization.txt')
+        results_display = open(results_display, 'w')
+        predictions, references = [], []
 
-            for sample in tqdm(list_data_dict):
-                input_text = prompt.format_map(sample)
-                generate_kwargs = dict(top_k=0,
-                                       top_p=1.0,
-                                       do_sample=True,
-                                       max_new_tokens=56,
-                                       repetition_penalty=1.15,
-                                       temperature=0.6,
-                                       max_length=init_cfg.llm.chat.max_len)
-                model_completion = fschatbot.generate(input_text,
-                                                      generate_kwargs)
+        for sample in tqdm(list_data_dict):
+            input_text = prompt.format_map(sample)
+            # generate_kwargs = dict(top_k=0,
+            #                        top_p=1.0,
+            #                        do_sample=True,
+            #                        max_new_tokens=56,
+            #                        repetition_penalty=1.15,
+            #                        temperature=0.6,
+            #                        max_length=init_cfg.llm.chat.max_len)
+            generate_kwargs = dict(
+                top_p=1.0,
+                temperature=1.0,
+                do_sample=True,
+                max_length=init_cfg.llm.chat.max_len,
+                num_return_sequences=10,
+            )
+            model_completions = fschatbot.generate(input_text, generate_kwargs)
 
+            results_display.write(f'Post:\n{sample["post"]}\n\n'
+                                  f'Human summary:\n{sample["summary"]}\n\n')
+            for i, completion in enumerate(model_completions):
                 results_display.write(
-                    f'Post:\n{sample["post"]}\n\n'
-                    f'Human summary:\n{sample["summary"]}\n\n'
-                    f'Model-generated summary:\n{model_completion}\n\n')
+                    f'Model-generated summary {i}:\n{completion}\n\n')
 
-                results_display.write('==========================\n\n')
-                results_display.flush()
+            results_display.write('==========================\n\n')
+            results_display.flush()
 
-                predictions.append(model_completion)
-                references.append(sample["summary"])
+        #     predictions.append(model_completion)
+        #     references.append(sample["summary"])
 
-            bleu = evaluate.load("bleu")
-            bleu_results = bleu.compute(predictions=predictions,
-                                        references=[[ref]
-                                                    for ref in references])
-            print(bleu_results)
-            results_display.write(f'bleu: {bleu_results}\n\n')
+        # bleu = evaluate.load("bleu")
+        # bleu_results = bleu.compute(predictions=predictions,
+        #                             references=[[ref]
+        #                                         for ref in references])
+        # print(bleu_results)
+        # results_display.write(f'bleu: {bleu_results}\n\n')
 
-            rouge = evaluate.load("rouge")
-            rouge_results = rouge.compute(predictions=predictions,
-                                          references=references)
-            print(rouge_results)
-            results_display.write(f'rouge: {rouge_results}\n\n')
+        # rouge = evaluate.load("rouge")
+        # rouge_results = rouge.compute(predictions=predictions,
+        #                               references=references)
+        # print(rouge_results)
+        # results_display.write(f'rouge: {rouge_results}\n\n')
 
-            results_display.close()
+        # results_display.close()
 
-            print('load the next model...')
-            fschatbot.next_model()
-        except Exception as err:
-            print(f'{err}, so finished all evaluations....')
-            break
+        # print('load the next model...')
+        # fschatbot.next_model()
+    except Exception as err:
+        print(f'{err}, so finished all evaluations....')
 
 
 if __name__ == "__main__":

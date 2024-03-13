@@ -63,7 +63,7 @@ def _download_tldr_cmpr(data_root):
     return list_train_dict, list_val_dict, list_test_dict
 
 
-def load_human_annotated_dataset(data_root, tokenizer):
+def _download_tldr_human(data_root):
     train_fp, valid_fp, test_fp = [
         os.path.join(data_root, 'reddit-tldr_train.jsonl'),
         os.path.join(data_root, 'reddit-tldr_valid.jsonl'),
@@ -88,6 +88,13 @@ def load_human_annotated_dataset(data_root, tokenizer):
     list_train_dict = load_jsonl(train_fp, **dataloader_kwargs)
     list_val_dict = load_jsonl(valid_fp, **dataloader_kwargs)
     list_test_dict = load_jsonl(test_fp, **dataloader_kwargs)
+
+    return list_train_dict, list_val_dict, list_test_dict
+
+
+def load_human_annotated_dataset(data_root, tokenizer):
+    list_train_dict, list_val_dict, list_test_dict = \
+        _download_tldr_human(data_root)
 
     train_dataset = LLMDataset(list_train_dict,
                                tokenizer,
@@ -225,3 +232,32 @@ def load_comparison_dataset_by_choice(data_root, tokenizer, max_num_test=-1):
     dataset = (train_dataset, val_dataset, test_dataset)
 
     return dataset
+
+
+def check_sim(data_root):
+    cmpr_list_train_dict, cmpr_list_val_dict, cmpr_list_test_dict = \
+        _download_tldr_cmpr(data_root)
+
+    human_list_train_dict, human_list_val_dict, human_list_test_dict = \
+        _download_tldr_human(data_root)
+
+    # show if human-annotated overlaps cmpr in terms of train_dict
+    cmpr_train = [sample['post'] for sample in cmpr_list_test_dict]
+    human_train = [sample['post'] for sample in human_list_train_dict]
+
+    print(len(cmpr_train))  # 92858
+    print(len(human_train))  # 116722
+
+    total_overlapping = 0
+
+    for data in cmpr_train:
+        if data in human_train:
+            total_overlapping += 1
+
+    print(total_overlapping)  # 59685/282/475
+
+
+if __name__ == "__main__":
+    data_root = os.path.join('/local/scratch/d/wu1977/dataset/',
+                             'reddit-tldr-comparison')
+    check_sim(data_root)
