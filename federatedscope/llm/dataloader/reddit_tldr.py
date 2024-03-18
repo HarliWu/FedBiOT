@@ -1,4 +1,6 @@
 import os
+import json
+import copy
 import pickle
 
 from federatedscope.core.data.utils import download_url
@@ -9,8 +11,10 @@ from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
 TLDR_PROMPT_DICT = {
     "summary": ("Below is a forum post. Write a precise and concise summary "
                 "that includes the most important points of the post.\n\n"
-                "### Subreddit:\n{subreddit}\n\n### Title:\n{title}\n\n"
-                "### Post:\n{post}\n\n### TL; DR:"),
+                "### Subreddit:\n{subreddit}\n\n"
+                "### Title:\n{title}\n\n"
+                "### Post:\n{post}\n\n"
+                "### TL; DR:"),
     "summary_cmp": (
         "Below is a forum post followed by two summaries. "
         "Pick a more precise and concise one that summarizes the most "
@@ -92,9 +96,82 @@ def _download_tldr_human(data_root):
     return list_train_dict, list_val_dict, list_test_dict
 
 
+def _tldr_human_for_prtraining(data_root):
+    train_fp, valid_fp, test_fp = [
+        os.path.join(data_root, 'reddit-tldr_train_finetune.json'),
+        os.path.join(data_root, 'reddit-tldr_valid_finetune.json'),
+        os.path.join(data_root, 'reddit-tldr_test_finetune.json')
+    ]
+
+    dataloader_kwargs = {
+        'subreddit': 'subreddit',
+        'title': 'title',
+        'post': 'post',
+        'summary': 'summary'
+    }
+    if os.path.exists(train_fp) and os.path.exists(valid_fp) and \
+            os.path.exists(test_fp):
+        list_train_dict = load_jsonl(train_fp, **dataloader_kwargs)
+        list_val_dict = load_jsonl(valid_fp, **dataloader_kwargs)
+        list_test_dict = load_jsonl(test_fp, **dataloader_kwargs)
+
+    else:
+        h_train, h_val, h_test = _download_tldr_human(data_root)
+        c_train, c_val, c_test = _download_tldr_cmpr(data_root)
+
+        # get a full list of comparison data
+        c_posts = []
+        for list_dict in [c_train, c_val, c_test]:
+            for sample in list_dict:
+                if sample['post'] not in c_posts:
+                    c_posts.append(sample['post'])
+
+        # remove the comparison data in human dataset
+        list_train_dict = [s for s in h_train if s['post'] not in c_posts]
+        list_val_dict = [s for s in h_val if s['post'] not in c_posts]
+        list_test_dict = [s for s in h_test if s['post'] not in c_posts]
+
+        # save to file
+        json.dump(list_train_dict, open(train_fp, "w"))
+        json.dump(list_val_dict, open(valid_fp, "w"))
+        json.dump(list_test_dict, open(test_fp, "w"))
+
+    return list_train_dict, list_val_dict, list_test_dict
+
+
 def load_human_annotated_dataset(data_root, tokenizer):
     list_train_dict, list_val_dict, list_test_dict = \
         _download_tldr_human(data_root)
+
+    train_dataset = LLMDataset(list_train_dict,
+                               tokenizer,
+                               prompt_input=TLDR_PROMPT_DICT['summary'],
+                               prompt_no_input=TLDR_PROMPT_DICT['summary'],
+                               output_tag='summary')
+    val_dataset = LLMDataset(list_val_dict,
+                             tokenizer,
+                             prompt_input=TLDR_PROMPT_DICT['summary'],
+                             prompt_no_input=TLDR_PROMPT_DICT['summary'],
+                             output_tag='summary')
+    test_dataset = LLMDataset(list_test_dict,
+                              tokenizer,
+                              prompt_input=TLDR_PROMPT_DICT['summary'],
+                              prompt_no_input=TLDR_PROMPT_DICT['summary'],
+                              output_tag='summary')
+
+    dataset = (train_dataset, val_dataset, test_dataset)
+
+    return dataset
+
+
+def load_human_finetuning_dataset(data_root, tokenizer, rlhf=False):
+    list_train_dict, list_val_dict, list_test_dict = \
+        _tldr_human_for_prtraining(data_root)
+
+    # First 60% for fine-tuning, last 40% for rlhf
+    idx = int(len(list_train_dict) * 0.6)
+    list_train_dict = list_train_dict[:idx] if rlhf else \
+        list_train_dict[idx:]
 
     train_dataset = LLMDataset(list_train_dict,
                                tokenizer,
@@ -189,6 +266,15 @@ def load_comparison_dataset_by_choice(data_root, tokenizer, max_num_test=-1):
         list_train_dict, list_val_dict, list_test_dict = \
             _download_tldr_cmpr(data_root)
 
+        # For training dataset, we should exchange the order
+        # and append the new training dataset to the list_train_dict
+        exchange_list_train_dict = copy.deepcopy(list_train_dict)
+        for sample in exchange_list_train_dict:
+            sample['summary_A'], sample['summary_B'] = \
+                sample['summary_B'], sample['summary_A']
+            sample['choice'] = 1 - sample['choice']
+        list_train_dict = list_train_dict + exchange_list_train_dict
+
         # map the choice to "A" and "B" instead of 0 and 1
         for list_dict in [list_train_dict, list_test_dict, list_val_dict]:
             for sample in list_dict:
@@ -242,7 +328,7 @@ def check_sim(data_root):
         _download_tldr_human(data_root)
 
     # show if human-annotated overlaps cmpr in terms of train_dict
-    cmpr_train = [sample['post'] for sample in cmpr_list_test_dict]
+    cmpr_train = [sample['post'] for sample in cmpr_list_val_dict]
     human_train = [sample['post'] for sample in human_list_train_dict]
 
     print(len(cmpr_train))  # 92858
@@ -253,7 +339,9 @@ def check_sim(data_root):
     for data in cmpr_train:
         if data in human_train:
             total_overlapping += 1
+            human_train.pop(human_train.index(data))
 
+    print(len(human_train))
     print(total_overlapping)  # 59685/282/475
 
 

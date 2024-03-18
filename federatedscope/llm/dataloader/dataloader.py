@@ -70,7 +70,7 @@ class LLMRewardCollator():
             [len(win_data):])
 
 
-class Predictor:
+class Generator:
     """Generate the output from the original LLM model"""
     def __init__(self, config, tokenizer, generate_kwargs=None):
         self.device = f'cuda:{config.device}'
@@ -82,6 +82,11 @@ class Predictor:
         if generate_kwargs is not None:
             self.generate_kwargs = generate_kwargs
         else:
+            self.generate_kwargs = {
+                'temperature': 0.0,
+                'top_p': 1.0,
+                'max_new_tokens': config.llm.chat.max_len,
+            }
             self.generate_kwargs = {
                 'max_new_tokens': config.llm.chat.max_len,
                 'num_beams': 4,
@@ -426,6 +431,20 @@ def load_llm_dataset(config=None, **kwargs):
         from federatedscope.llm.dataloader.reddit_tldr import \
             load_human_annotated_dataset
         dataset = load_human_annotated_dataset(config.data.root, tokenizer)
+
+    elif dataset_name.lower() == 'reddit-tldr-finetuning':
+        from federatedscope.llm.dataloader.reddit_tldr import \
+            load_human_finetuning_dataset
+        data_root = os.path.join(config.data.root, 'reddit-tldr-comparison')
+        dataset = load_human_finetuning_dataset(data_root, tokenizer)
+
+    elif dataset_name.lower() == 'reddit-tldr-rlhf':
+        from federatedscope.llm.dataloader.reddit_tldr import \
+            load_human_finetuning_dataset
+        data_root = os.path.join(config.data.root, 'reddit-tldr-comparison')
+        dataset = load_human_finetuning_dataset(data_root,
+                                                tokenizer,
+                                                rlhf=True)
 
     elif dataset_name.lower() == 'reddit-tldr-comparison':
         from federatedscope.llm.dataloader.reddit_tldr import \
