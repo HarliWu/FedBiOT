@@ -249,7 +249,7 @@ class AdapterModel(nn.Module):
 
     def print_model_map(self):
         for i in self.model.named_parameters():
-            print(f"{i[0]} -> {i[1].device}")
+            logger.info(f"{i[0]} -> {i[1].device}")
 
     def merge_and_unload(self):
         if isinstance(self.model, PeftModel) and \
