@@ -80,11 +80,11 @@ def best_of_n_dataset(init_cfg, gen_cfg=None, n=16):
                           f'reddit-tldr_test_{n}-gen.json')
     if os.path.exists(gen_fp):
         # load the dataset
-        list_data_dict = json.load(gen_fp)
+        list_data_dict = json.load(open(gen_fp, "r"))
     else:
         # create the dataset
         list_data_dict = _generate_best_of_n_dataset(gen_cfg, n)
-        json.dump(list_data_dict, gen_fp)
+        json.dump(list_data_dict, open(gen_fp, "w"))
     return list_data_dict
 
 
@@ -148,6 +148,9 @@ def best_of_n(model, dataset, tokenizer, n=16):
             _, predicted, _ = cal_acc(outputs.logits, labels, choices)
             predicted_indices += predicted.tolist()
 
+        print('Last better index:', list(last_better_idx),
+              len(last_better_idx))
+        print('Predicted indices:', predicted_indices, len(predicted_indices))
         assert len(predicted_indices) == len(last_better_idx)
         predicted_indices = np.array(predicted_indices)
         last_better_idx[predicted_indices == 1] = i
