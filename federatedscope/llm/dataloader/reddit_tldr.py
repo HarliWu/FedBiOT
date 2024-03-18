@@ -11,10 +11,10 @@ from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
 TLDR_PROMPT_DICT = {
     "summary": ("Below is a forum post. Write a precise and concise summary "
                 "that includes the most important points of the post.\n\n"
-                "### Subreddit:\n{subreddit}\n\n"
-                "### Title:\n{title}\n\n"
-                "### Post:\n{post}\n\n"
-                "### TL; DR:"),
+                "### SUBREDDIT: r/{subreddit}\n"
+                "### TITLE: {title}\n"
+                "### POST: {post}\n"
+                "### TL;DR:"),
     "summary_cmp": (
         "Below is a forum post followed by two summaries. "
         "Pick a more precise and concise one that summarizes the most "
@@ -98,9 +98,9 @@ def _download_tldr_human(data_root):
 
 def _tldr_human_for_prtraining(data_root):
     train_fp, valid_fp, test_fp = [
-        os.path.join(data_root, 'reddit-tldr_train_finetune.json'),
-        os.path.join(data_root, 'reddit-tldr_valid_finetune.json'),
-        os.path.join(data_root, 'reddit-tldr_test_finetune.json')
+        os.path.join(data_root, 'reddit-tldr_train_finetune.jsonl'),
+        os.path.join(data_root, 'reddit-tldr_valid_finetune.jsonl'),
+        os.path.join(data_root, 'reddit-tldr_test_finetune.jsonl')
     ]
 
     dataloader_kwargs = {
@@ -131,10 +131,14 @@ def _tldr_human_for_prtraining(data_root):
         list_val_dict = [s for s in h_val if s['post'] not in c_posts]
         list_test_dict = [s for s in h_test if s['post'] not in c_posts]
 
-        # save to file
-        json.dump(list_train_dict, open(train_fp, "w"))
-        json.dump(list_val_dict, open(valid_fp, "w"))
-        json.dump(list_test_dict, open(test_fp, "w"))
+        # Add a space to the start of a summary, and save to file
+        for fp, list_dict in [(train_fp, list_train_dict),
+                              (valid_fp, list_val_dict),
+                              (test_fp, list_test_dict)]:
+            with open(fp, "w") as file:
+                for sample in list_dict:
+                    sample["summary"] = " " + sample["summary"]
+                    file.write(json.dumps(sample) + "\n")
 
     return list_train_dict, list_val_dict, list_test_dict
 
