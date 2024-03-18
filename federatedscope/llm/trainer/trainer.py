@@ -273,6 +273,11 @@ class LLMTrainer(GeneralTorchTrainer):
                     ctx.scheduler.step()
                 ctx.optimizer.zero_grad()
 
+        # move the training data to cpu
+        ctx.data_batch['input_ids'].cpu()
+        ctx.data_batch['labels'].cpu()
+        ctx.data_batch['attention_mask'].cpu()
+
     def _hook_on_batch_end(self, ctx):
         if ctx.skip_this_batch:
             if ctx.cfg.llm.retry_on_nan_loss:
