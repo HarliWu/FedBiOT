@@ -436,7 +436,9 @@ def load_llm_dataset(config=None, **kwargs):
         from federatedscope.llm.dataloader.reddit_tldr import \
             load_human_finetuning_dataset
         data_root = os.path.join(config.data.root, 'reddit-tldr-comparison')
-        dataset = load_human_finetuning_dataset(data_root, tokenizer)
+        dataset = load_human_finetuning_dataset(data_root,
+                                                tokenizer,
+                                                max_num_test=1000)
 
     elif dataset_name.lower() == 'reddit-tldr-rlhf':
         from federatedscope.llm.dataloader.reddit_tldr import \
@@ -444,7 +446,8 @@ def load_llm_dataset(config=None, **kwargs):
         data_root = os.path.join(config.data.root, 'reddit-tldr-comparison')
         dataset = load_human_finetuning_dataset(data_root,
                                                 tokenizer,
-                                                rlhf=True)
+                                                rlhf=True,
+                                                max_num_test=1000)
 
     elif dataset_name.lower() == 'reddit-tldr-comparison':
         from federatedscope.llm.dataloader.reddit_tldr import \

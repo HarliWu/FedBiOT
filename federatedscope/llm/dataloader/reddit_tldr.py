@@ -168,7 +168,10 @@ def load_human_annotated_dataset(data_root, tokenizer):
     return dataset
 
 
-def load_human_finetuning_dataset(data_root, tokenizer, rlhf=False):
+def load_human_finetuning_dataset(data_root,
+                                  tokenizer,
+                                  rlhf=False,
+                                  max_num_test=-1):
     list_train_dict, list_val_dict, list_test_dict = \
         _tldr_human_for_prtraining(data_root)
 
@@ -192,6 +195,11 @@ def load_human_finetuning_dataset(data_root, tokenizer, rlhf=False):
                               prompt_input=TLDR_PROMPT_DICT['summary'],
                               prompt_no_input=TLDR_PROMPT_DICT['summary'],
                               output_tag='summary')
+
+    # shrink val and test dataset
+    if max_num_test > 0:
+        val_dataset.input_ids = val_dataset.input_ids[:max_num_test]
+        test_dataset.input_ids = test_dataset.input_ids[:max_num_test]
 
     dataset = (train_dataset, val_dataset, test_dataset)
 
