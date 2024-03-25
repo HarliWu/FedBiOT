@@ -14,7 +14,7 @@ from federatedscope.llm.dataset.llm_dataset import DefaultToken
 
 import sys
 
-sys.setrecursionlimit(10000)
+sys.setrecursionlimit(100000)
 
 logger = logging.getLogger(__name__)
 

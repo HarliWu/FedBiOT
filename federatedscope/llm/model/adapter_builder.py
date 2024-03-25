@@ -19,6 +19,9 @@ MODEL_UNIT = {
 }
 
 import logging
+import sys
+
+sys.setrecursionlimit(100000)
 
 logger = logging.getLogger(__name__)
 

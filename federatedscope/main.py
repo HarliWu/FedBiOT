@@ -7,6 +7,8 @@ if DEV_MODE:
     file_dir = os.path.join(os.path.dirname(__file__), '..')
     sys.path.append(file_dir)
 
+sys.setrecursionlimit(100000)
+
 from federatedscope.core.cmd_args import parse_args, parse_client_cfg
 from federatedscope.core.auxiliaries.data_builder import get_data
 from federatedscope.core.auxiliaries.utils import setup_seed
