@@ -17,8 +17,7 @@ def extract_single_rating(score_output):
 @torch.no_grad()
 def auto_j_eval_rating(dataset):
     model = AutoModelForCausalLM.from_pretrained("GAIR/autoj-13b",
-                                                 device_map='auto',
-                                                 torch_dtype=torch.bfloat16)
+                                                 device_map='auto')
     tokenizer = AutoTokenizer.from_pretrained("GAIR/autoj-13b")
 
     prompt = (
@@ -62,13 +61,14 @@ def read_file(path='test_results.txt'):
     tag = ''
     record = {'subreddit': '', 'title': '', 'post': '', 'response': ''}
     for line in f.readlines():
-        if 'Subreddit: ' in line:
+        if 'Subreddit:' in line:
             record['subreddit'] = line.replace('Subreddit: ', '')
+            tag = 'subreddit'
 
-        if 'Title: ' in line:
+        elif 'Title:' in line:
             tag = 'title'
 
-        if 'Post:' in line:
+        elif 'Post:' in line:
             tag = 'post'
 
         elif 'generated summary' in line:
@@ -77,6 +77,9 @@ def read_file(path='test_results.txt'):
         elif '=============' in line:
             # The end of the record, which should be
             # appended to the collection
+            for key in record.keys():
+                if record[key].endswith('\n\n'):
+                    record[key] = record[key][:-2]
             query = ("Summarize the following post\n\n"
                      "Title: {title}\n\n"
                      "Post: {post}").format_map(record)
@@ -94,14 +97,13 @@ def read_file(path='test_results.txt'):
 
 def evaluation(file_path):
     dataset = read_file(file_path)
-    dataset = dataset[:500]
     auto_j_comments, auto_j_ratings = auto_j_eval_rating(dataset)
 
     # print the evaluation results
     with open(file_path + '_autoj_eval.txt', 'w') as f:
         for sample, comment, rating in zip(dataset, auto_j_comments,
                                            auto_j_ratings):
-            f.write(f'Subreddit: r/{sample["subreddit"]}\n\n'
+            f.write(f'Subreddit: {sample["subreddit"]}\n\n'
                     f'Title:\n{sample["title"]}\n\n'
                     f'Post:\n{sample["post"]}\n\n'
                     f'Best generated summary:\n{sample["response"]}\n\n'

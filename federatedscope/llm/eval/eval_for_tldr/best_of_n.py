@@ -1,4 +1,6 @@
 import torch
+import logging
+import random
 from torch.utils.data import DataLoader
 import os
 import json
@@ -18,7 +20,10 @@ from federatedscope.llm.misc.fschat import FSChatBot
 from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
     LLMDataset
 
+logger = logging.getLogger(__name__)
 
+
+@torch.no_grad()
 def _generate_best_of_n_dataset(gen_cfg, n=16):
     # load your finetuned model (saved as xxx.ckpt)
     #    in yaml file federate.save_to
@@ -75,6 +80,7 @@ def _generate_best_of_n_dataset(gen_cfg, n=16):
     return list_data_dict
 
 
+@torch.no_grad()
 def best_of_n_dataset(init_cfg, gen_cfg=None, n=16):
     gen_fp = os.path.join(init_cfg.data.root, 'reddit-tldr-comparison',
                           f'reddit-tldr_test_{n}-gen.json')
@@ -88,6 +94,7 @@ def best_of_n_dataset(init_cfg, gen_cfg=None, n=16):
     return list_data_dict
 
 
+@torch.no_grad()
 def cal_acc(logits, labels, choices):
     shift_logits = logits[..., :-1, :].contiguous()
     shift_labels = labels[..., 1:].contiguous()
@@ -99,12 +106,14 @@ def cal_acc(logits, labels, choices):
     new_labels = new_labels.view(-1)
     new_logits = shift_logits[..., choices].view(-1, len(choices))
     new_logits = new_logits[(new_labels != DefaultToken.IGNORE_INDEX.value), :]
+    # print(new_logits)
     new_labels = new_labels[(new_labels != DefaultToken.IGNORE_INDEX.value)]
     _, predicted = new_logits.max(1)
 
     return new_labels, predicted, predicted.eq(new_labels).sum().item()
 
 
+@torch.no_grad()
 def best_of_n(model, dataset, tokenizer, n=16):
     prompt = ("Below is a forum post followed by two summaries. "
               "Pick a more precise and concise one that summarizes the most "
@@ -123,19 +132,33 @@ def best_of_n(model, dataset, tokenizer, n=16):
     # Correct idx is 0 means no changed, 1 means changed to the new index
     last_better_idx = np.array([0] * len(dataset))
     for i in range(1, n):
+        eval_dataset = []
+
         for better_idx, sample in zip(last_better_idx, dataset):
             sample['summary_A'] = sample['summaries'][better_idx]
+            if sample['summary_A'].startswith(" ") is False:
+                sample['summary_A'] = " " + sample['summary_A']
             sample['summary_B'] = sample['summaries'][i]
-            sample['choice'] = " A"
+            if sample['summary_B'].startswith(" ") is False:
+                sample['summary_B'] = " " + sample['summary_B']
+            sample['choice'] = random.choice([" A", " B"])
+            eval_dataset.append({
+                'subreddit': sample['subreddit'],
+                'title': sample['title'],
+                'post': sample['post'],
+                'summary_A': sample['summary_B'],
+                'summary_B': sample['summary_A'],
+                'choice': sample['choice']
+            })
 
-        test_dataset = LLMDataset(dataset,
+        test_dataset = LLMDataset(eval_dataset,
                                   tokenizer,
                                   prompt_input=prompt,
                                   prompt_no_input=prompt,
                                   output_tag='choice')
         dataloader = DataLoader(
             dataset=test_dataset,
-            batch_size=n,
+            batch_size=1,
             shuffle=False,
             collate_fn=LLMDataCollator(tokenizer=tokenizer))
 
@@ -146,14 +169,16 @@ def best_of_n(model, dataset, tokenizer, n=16):
             attention_mask = data_batch["attention_mask"].to('cuda:0')
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
             _, predicted, _ = cal_acc(outputs.logits, labels, choices)
+            logger.info(f'output lengths: {len(predicted)} '
+                        f'(Expected: {len(input_ids)})')
             predicted_indices += predicted.tolist()
 
-        print('Last better index:', list(last_better_idx),
-              len(last_better_idx))
-        print('Predicted indices:', predicted_indices, len(predicted_indices))
-        assert len(predicted_indices) == len(last_better_idx)
+        logger.info(f'Last better index: {list(last_better_idx)} '
+                    f'({len(last_better_idx)})')
+        logger.info(f'Predicted indices: {predicted_indices} '
+                    f'({len(predicted_indices)})')
         predicted_indices = np.array(predicted_indices)
-        last_better_idx[predicted_indices == 1] = i
+        last_better_idx[predicted_indices == 0] = i
 
     # print the final results
     return last_better_idx
@@ -199,6 +224,24 @@ def main():
     model = get_llm(init_cfg, device_map='auto')
     tokenizer, _ = get_tokenizer(model_name, init_cfg.data.root,
                                  init_cfg.llm.tok_len)
+
+    # load model from checkpoint
+    num_ckpt = \
+        init_cfg.federate.total_round_num // init_cfg.federate.save_freq
+    prefix = ['final_'] + \
+             [str(i*init_cfg.federate.save_freq) + '_'
+              for i in range(num_ckpt, -1, -1)] + ['']
+    dirname, filename = os.path.split(init_cfg.federate.save_to)
+    for pre in prefix:
+        print(os.path.join(dirname, pre + filename))
+        if os.path.exists(os.path.join(dirname, pre + filename)):
+            ckpt_path = os.path.join(dirname, pre + filename)
+            ckpt = torch.load(ckpt_path, map_location='cpu')
+            model.load_state_dict(ckpt['model'])
+            print(f'Model of Round {ckpt["cur_round"]} loads '
+                  f'from the checkpoint {ckpt_path}')
+            break
+    # model = model.merge_and_unload()
 
     # get the best-of-n results and display them
     results = best_of_n(model, dataset, tokenizer, n=16)
