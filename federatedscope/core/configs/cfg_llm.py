@@ -58,6 +58,9 @@ def extend_llm_cfg(cfg):
     # more time.
     cfg.llm.adapter.mv_to_cpu = False
 
+    # Each client trains their own local model for different adapters
+    cfg.llm.adapter.local_only = False
+
     # ---------------------------------------------------------------------- #
     # Offsite-tuning related options
     # ---------------------------------------------------------------------- #

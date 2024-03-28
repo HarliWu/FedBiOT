@@ -60,8 +60,9 @@ def enable_adapter(model, package, adapter, **kwargs):
         else:
             raise NotImplementedError
         model.print_trainable_parameters()
+        return model, peft_config
 
-    elif package == 'adapterhub':
+    if package == 'adapterhub':
         """
         AdapterHub: https://docs.adapterhub.ml/model_overview.html
         Support methods:
@@ -143,9 +144,9 @@ def enable_adapter(model, package, adapter, **kwargs):
         else:
             raise NameError(
                 f"There is no adapter named {adapter} in {package}")
-    else:
-        raise NotImplementedError
-    return model
+        return model, config
+
+    raise NotImplementedError
 
 
 class AdapterModel(nn.Module):
@@ -162,8 +163,12 @@ class AdapterModel(nn.Module):
             adapter_package = kwargs.pop('adapter_package', 'peft')
             adapter_method = kwargs.pop('adapter_method', 'lora')
 
-            self.model = enable_adapter(model, adapter_package, adapter_method,
-                                        **kwargs)
+            self.model, self.peft_config = \
+                enable_adapter(model,
+                               adapter_package,
+                               adapter_method,
+                               **kwargs)
+            self.adapter_names, self.active_adapter = ['default'], 'default'
         else:
             self.model = model
 
@@ -330,6 +335,21 @@ class AdapterModel(nn.Module):
     # TODO: Fix `__getattr__`
     # def __getattr__(self, item):
     #     return getattr(self.model, item)
+
+    def append_adapters(self, adapter_names, peft_config=None):
+        assert isinstance(self.model, PeftModel)
+        peft_config = self.peft_config if peft_config is None else peft_config
+        for name in adapter_names:
+            self.model.add_adapter(name, peft_config)
+            self.adapter_names.append(name)
+
+    def set_active_adapter(self, adapter_name):
+        assert adapter_name in self.adapter_names
+        self.active_adapter = adapter_name
+        self.model.set_adapter(adapter_name)
+
+    def get_active_adapter(self):
+        return self.active_adapter
 
 
 class LLMDataParallel(nn.DataParallel):

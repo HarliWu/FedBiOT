@@ -119,6 +119,11 @@ def get_client_cls(cfg):
                 FedOT_Client
             return FedOT_Client
 
+    if cfg.llm.adapter.local_only:
+        from federatedscope.llm.llm_local.client import \
+            LLMMultiLoRAClient
+        return LLMMultiLoRAClient
+
     return client_class
 
 
@@ -233,5 +238,10 @@ def get_server_cls(cfg):
             from federatedscope.llm.offsite_tuning.fedot import \
                 FedOT_Server
             return FedOT_Server
+
+    if cfg.llm.adapter.local_only:
+        from federatedscope.llm.llm_local.server import \
+            LLMMultiLoRAServer
+        return LLMMultiLoRAServer
 
     return server_class

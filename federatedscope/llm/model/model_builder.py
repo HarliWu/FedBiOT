@@ -81,5 +81,9 @@ def get_llm(config, **kwargs):
     args = config.llm.adapter.args[0] if len(
         config.llm.adapter.args[0]) > 0 else {}
     model = AdapterModel(model, use_adapter=config.llm.adapter.use, **args)
+    if config.llm.adapter.use and config.llm.adapter.local_only:
+        model.append_adapters(adapter_names=[
+            f'Client_{i+1}' for i in range(config.federate.client_num)
+        ])
 
     return model
