@@ -1,6 +1,7 @@
 import torch
 import logging
 import gc
+import math
 
 try:
     import deepspeed
@@ -76,6 +77,9 @@ class LLMTrainer(GeneralTorchTrainer):
     def _run_batch(self, hooks_set, run_step=-1):
         if run_step == -1:
             run_step = getattr(self.ctx, f"num_{self.ctx.cur_split}_batch")
+            if self._cfg.train.batch_or_epoch == 'epoch':
+                run_step = math.ceil(run_step / self.grad_accum_step)
+
         for batch_i in range(run_step):
             self.ctx.cur_batch_i = CtxVar(batch_i, LIFECYCLE.BATCH)
 
