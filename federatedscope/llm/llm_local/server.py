@@ -1,15 +1,7 @@
 import logging
-import copy
-import torch
 
-from federatedscope.core.message import Message
-from federatedscope.register import register_worker
-from federatedscope.core.auxiliaries.data_builder import get_data
-from federatedscope.core.monitors.monitor import Monitor
-from federatedscope.core.auxiliaries.utils import add_prefix_to_path
 from federatedscope.core.workers.server import Server
-from federatedscope.llm.offsite_tuning.utils import \
-    build_cfg_for_alignment, convert_layers_train_state
+from federatedscope.core.auxiliaries.utils import merge_param_dict
 
 logger = logging.getLogger(__name__)
 
@@ -42,52 +34,43 @@ class LLMMultiLoRAServer(Server):
 
             self.sampler = None
             self.sample_client_num = client_num
-            self.total_round_num = 0
 
-    def callback_funcs_model_para(self, message: Message):
-        if self.is_finish:
-            return 'finish'
+    def _perform_federated_aggregation(self):
+        """
+        Perform federated aggregation and update the global model
+        """
+        train_msg_buffer = self.msg_buffer['train'][self.state]
+        for model_idx in range(self.model_num):
+            model = self.models[model_idx]
+            aggregator = self.aggregators[model_idx]
+            merged_adapter = dict()
 
-        round = message.state
-        sender = message.sender
-        timestamp = message.timestamp
-        content = message.content
-        self.sampler.change_state(sender, 'idle')
+            for client_id in train_msg_buffer.keys():
+                if self.model_num == 1:
+                    _, model_param = train_msg_buffer[client_id]
+                    merged_adapter.update(model_param)
+                else:
+                    train_data_size, model_para_multiple = \
+                        train_msg_buffer[client_id]
+                    merged_adapter.update(model_para_multiple[model_idx])
 
-        logger.info(f'{round}, {sender}, {content}')
+            msg_list = [(1, merged_adapter)]
 
-        # dequantization
-        if self._cfg.quantization.method == 'uniform':
-            from federatedscope.core.compression import \
-                symmetric_uniform_dequantization
-            if isinstance(content[1], list):  # multiple model
-                sample_size = content[0]
-                quant_model = [
-                    symmetric_uniform_dequantization(x) for x in content[1]
-                ]
-            else:
-                sample_size = content[0]
-                quant_model = symmetric_uniform_dequantization(content[1])
-            content = (sample_size, quant_model)
+            # Trigger the monitor here (for training)
+            self._monitor.calc_model_metric(self.models[0].state_dict(),
+                                            msg_list,
+                                            rnd=self.state)
 
-        # update the currency timestamp according to the received message
-        assert timestamp >= self.cur_timestamp  # for test
-        self.cur_timestamp = timestamp
+            # Aggregate
+            aggregated_num = len(msg_list)
+            agg_info = {
+                'client_feedback': msg_list,
+                'recover_fun': self.recover_fun,
+            }
+            # logger.info(f'The staleness is {staleness}')
+            result = aggregator.aggregate(agg_info)
+            # Due to lazy load, we merge two state dict
+            merged_param = merge_param_dict(model.state_dict().copy(), result)
+            model.load_state_dict(merged_param, strict=False)
 
-        if round == self.state:
-            if round not in self.msg_buffer['train']:
-                self.msg_buffer['train'][round] = dict()
-            # Save the messages in this round
-            self.msg_buffer['train'][round][sender] = content
-            # TODO: Save the client models to files
-            logger.info(content)
-
-        move_on_flag = self.check_and_move_on()
-
-        return move_on_flag
-
-    # def broadcast_model_para(self,
-    #                          msg_type='model_para',
-    #                          sample_client_num=-1,
-    #                          filter_unseen_clients=True):
-    #     pass
+        return aggregated_num
