@@ -168,7 +168,7 @@ class AdapterModel(nn.Module):
                                adapter_package,
                                adapter_method,
                                **kwargs)
-            self.adapter_names, self.active_adapter = ['default'], 'default'
+            self.adapter_names = ['default']
         else:
             self.model = model
 
@@ -345,11 +345,10 @@ class AdapterModel(nn.Module):
 
     def set_active_adapter(self, adapter_name):
         assert adapter_name in self.adapter_names
-        self.active_adapter = adapter_name
         self.model.set_adapter(adapter_name)
 
     def get_active_adapter(self):
-        return self.active_adapter
+        return self.model.active_adapter
 
 
 class LLMDataParallel(nn.DataParallel):
