@@ -45,6 +45,10 @@ class LLMDataset(Dataset):
                  output_tag='output'):
         super(LLMDataset, self).__init__()
 
+        # Print prompt info
+        logger.info(f'prompt_input: {prompt_input}')
+        logger.info(f'prompt_no_input: {prompt_no_input}')
+
         self.sources = []
         for example in list_data_dict:
             input = example.get("input", None)
