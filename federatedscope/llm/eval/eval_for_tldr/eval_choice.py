@@ -80,19 +80,6 @@ def main():
     _, _, test_dataset = load_comparison_dataset_by_choice(data_root=data_root,
                                                            tokenizer=tokenizer)
 
-    prompt = ("Below is a forum post followed by two summaries. "
-              "Pick a more precise and concise one that summarizes the most "
-              "important points in the given forum post, without including "
-              "unimportant or irrelevant details. State your choice with a "
-              "single capital letter, i.e., \"A\" if SUMMARY A is better, "
-              "\"B\" if SUMMARY B is better.\n\n"
-              "### SUBREDDIT: r/{subreddit}\n"
-              "### TITLE: {title}\n"
-              "### POST: {post}\n"
-              "### SUMMARY A:{summary_A}\n"
-              "### SUMMARY B:{summary_B}\n"
-              "### YOUR CHOICE:")
-
     # list all choices
     choices = []
     for choice in init_cfg.trainer.choices:

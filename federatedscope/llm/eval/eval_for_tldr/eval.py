@@ -12,6 +12,7 @@ from federatedscope.core.auxiliaries.utils import setup_seed
 from federatedscope.core.auxiliaries.logging import update_logger
 from federatedscope.core.data.utils import download_url
 from federatedscope.llm.dataloader.dataloader import load_jsonl, load_jsonls
+from federatedscope.llm.dataloader.reddit_tldr import TLDR_PROMPT_DICT
 from federatedscope.llm.misc.fschat import FSChatBot
 
 
@@ -49,10 +50,7 @@ def main():
                                 category='subreddit',
                                 summary='summary')
 
-    prompt = ("Below is a forum post. Write a precise and concise summary "
-              "that includes the most important points of the post.\n\n"
-              "### Subreddit:\n{category}\n\n### Title:\n{title}\n\n"
-              "### Post:\n{post}\n\n### TL; DR:")
+    prompt = TLDR_PROMPT_DICT["summary"]
 
     # Print result to a text file
     results_display = open(os.path.join(init_cfg.outdir, 'test_results.txt'),

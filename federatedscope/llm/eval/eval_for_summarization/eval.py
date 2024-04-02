@@ -2,7 +2,6 @@ import re
 import torch
 import os
 import random
-import evaluate
 import transformers
 from transformers import GenerationConfig
 from tqdm import tqdm
@@ -13,6 +12,7 @@ from federatedscope.core.auxiliaries.utils import setup_seed
 from federatedscope.core.auxiliaries.logging import update_logger
 from federatedscope.core.data.utils import download_url
 from federatedscope.llm.dataloader.dataloader import load_jsonl, load_jsonls
+from federatedscope.llm.dataloader.reddit_tldr import TLDR_PROMPT_DICT
 from federatedscope.llm.misc.fschat import FSChatBot
 
 
@@ -51,10 +51,7 @@ def main():
                                 post='post',
                                 summary='summary')
 
-    prompt = ("Below is a forum post. Write a precise and concise summary "
-              "that includes the most important points of the post.\n\n"
-              "### Subreddit:\n{subreddit}\n\n### Title:\n{title}\n\n"
-              "### Post:\n{post}\n\n### TL; DR:")
+    prompt = TLDR_PROMPT_DICT["summary"]
 
     try:
         results_display = os.path.join(
@@ -64,19 +61,11 @@ def main():
 
         for sample in tqdm(list_data_dict):
             input_text = prompt.format_map(sample)
-            # generate_kwargs = dict(top_k=0,
-            #                        top_p=1.0,
-            #                        do_sample=True,
-            #                        max_new_tokens=56,
-            #                        repetition_penalty=1.15,
-            #                        temperature=0.6,
-            #                        max_length=init_cfg.llm.chat.max_len)
             generate_kwargs = dict(
                 top_p=1.0,
-                temperature=1.0,
-                do_sample=True,
-                max_length=init_cfg.llm.chat.max_len,
-                num_return_sequences=10,
+                temperature=0.0,
+                do_sample=False,
+                max_new_tokens=60,
             )
             model_completions = fschatbot.generate(input_text, generate_kwargs)
 
