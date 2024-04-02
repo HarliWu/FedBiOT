@@ -3,6 +3,9 @@ import numpy as np
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+from federatedscope.llm.eval.eval_for_tldr.auto_j_constants_prompt \
+    import build_autoj_input
+
 
 def extract_single_rating(score_output):
     pred_score = 0.0
@@ -20,24 +23,18 @@ def auto_j_eval_rating(dataset):
                                                  device_map='auto')
     tokenizer = AutoTokenizer.from_pretrained("GAIR/autoj-13b")
 
-    prompt = (
-        "Write critiques for a submitted response on a given user's query, "
-        "and grade the response:\n\n"
-        "[BEGIN DATA]\n***\n[Query]: {query}\n***\n"
-        "[Response]: {response}\n***\n[END DATA]\n\n"
-        "Write critiques for this response. After that, you should "
-        "give a final rating for the response on a scale of 1 to 10 "
-        "by strictly following this format: \"[[rating]]\", "
-        "for example: \"Rating: [[5]]\".")
-
     generate_kwargs = dict(temperature=0.0,
                            top_p=1.0,
                            do_sample=False,
                            max_new_tokens=1024)
 
     auto_j_comments, auto_j_ratings = [], []
-    for sample in tqdm(dataset):
-        input_text = prompt.format_map(sample)
+    all_samples = tqdm(dataset)
+    for sample in all_samples:
+        input_text = build_autoj_input(prompt=sample['query'],
+                                       resp1=sample['response'],
+                                       resp2=None,
+                                       protocol="single")
         input_tokens = tokenizer(input_text, return_tensors="pt")
         input_ids = input_tokens.input_ids.to('cuda:0')
         attention_mask = input_tokens.attention_mask.to('cuda:0')
@@ -50,6 +47,11 @@ def auto_j_eval_rating(dataset):
         auto_j_comments.append(response)
         rate = extract_single_rating(response)
         auto_j_ratings.append(rate)
+
+        all_samples.set_postfix({
+            'zeros': np.count_nonzero(np.array(auto_j_ratings) == 0),
+            'avg_ratings': np.mean(auto_j_ratings)
+        })
 
     return auto_j_comments, auto_j_ratings
 
@@ -113,6 +115,8 @@ def evaluation(file_path):
             f.flush()
         f.write(f'{auto_j_ratings}\n\n')
         f.write(f'Average Auto-J Rating: {np.mean(auto_j_ratings)}\n\n')
+
+    return auto_j_ratings, np.mean(auto_j_ratings)
 
 
 if __name__ == "__main__":

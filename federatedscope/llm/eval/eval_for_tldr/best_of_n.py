@@ -1,5 +1,4 @@
 import torch
-import logging
 import random
 from torch.utils.data import DataLoader
 import os
@@ -17,10 +16,12 @@ from federatedscope.llm.model.model_builder import get_llm
 from federatedscope.llm.dataloader.dataloader import load_jsonl, \
     LLMDataCollator, get_tokenizer
 from federatedscope.llm.misc.fschat import FSChatBot
+from federatedscope.llm.dataloader.reddit_tldr import TLDR_PROMPT_DICT
 from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
     LLMDataset
+from federatedscope.llm.eval.eval_for_tldr.auto_j_vllm import evaluation
 
-logger = logging.getLogger(__name__)
+logger = None
 
 
 @torch.no_grad()
@@ -44,10 +45,7 @@ def _generate_best_of_n_dataset(gen_cfg, n=16):
                                 post='post',
                                 summary='summary')
 
-    prompt = ("Below is a forum post. Write a precise and concise summary "
-              "that includes the most important points of the post.\n\n"
-              "### Subreddit:\n{subreddit}\n\n### Title:\n{title}\n\n"
-              "### Post:\n{post}\n\n### TL; DR:")
+    prompt = TLDR_PROMPT_DICT["summary"]
 
     results_display = os.path.join(gen_cfg.outdir,
                                    f'{fschatbot.curpfx}_summarization.txt')
@@ -59,7 +57,7 @@ def _generate_best_of_n_dataset(gen_cfg, n=16):
             top_p=1.0,
             temperature=1.0,
             do_sample=True,
-            max_length=gen_cfg.llm.chat.max_len,
+            max_new_tokens=60,
             num_return_sequences=n,
         )
         model_completions = fschatbot.generate(input_text, generate_kwargs)
@@ -110,28 +108,19 @@ def cal_acc(logits, labels, choices):
     new_labels = new_labels[(new_labels != DefaultToken.IGNORE_INDEX.value)]
     _, predicted = new_logits.max(1)
 
-    return new_labels, predicted, predicted.eq(new_labels).sum().item()
+    return new_labels, new_logits, predicted, predicted.eq(
+        new_labels).sum().item()
 
 
 @torch.no_grad()
-def best_of_n(model, dataset, tokenizer, n=16):
-    prompt = ("Below is a forum post followed by two summaries. "
-              "Pick a more precise and concise one that summarizes the most "
-              "important points in the given forum post, without including "
-              "unimportant or irrelevant details. State your choice with a "
-              "single capital letter, i.e., \"A\" if SUMMARY A is better, "
-              "\"B\" if SUMMARY B is better.\n\n"
-              "### SUBREDDIT: r/{subreddit}\n"
-              "### TITLE: {title}\n"
-              "### POST: {post}\n"
-              "### SUMMARY A:{summary_A}\n"
-              "### SUMMARY B:{summary_B}\n"
-              "### YOUR CHOICE:")
+def best_of_n(model, dataset, tokenizer, n=16, output_dir=None):
+    prompt = TLDR_PROMPT_DICT["summary_cmp"]
 
     choices = [tokenizer(f'{c}')['input_ids'][-1] for c in ['A', 'B']]
     # Correct idx is 0 means no changed, 1 means changed to the new index
     last_better_idx = np.array([0] * len(dataset))
     for i in range(1, n):
+        logger.info(f'===== This is {i}-th evaluation =====')
         eval_dataset = []
 
         for better_idx, sample in zip(last_better_idx, dataset):
@@ -158,30 +147,81 @@ def best_of_n(model, dataset, tokenizer, n=16):
                                   output_tag='choice')
         dataloader = DataLoader(
             dataset=test_dataset,
-            batch_size=1,
+            batch_size=n,
             shuffle=False,
             collate_fn=LLMDataCollator(tokenizer=tokenizer))
 
         predicted_indices = []
-        for data_batch in tqdm(dataloader):
+        # results_display = open(os.path.join(output_dir,
+        #                                     f'iter_{i}.txt'), 'w')
+        for idx, data_batch in enumerate(tqdm(dataloader)):
             input_ids = data_batch["input_ids"].to('cuda:0')
             labels = data_batch["labels"].to('cuda:0')
             attention_mask = data_batch["attention_mask"].to('cuda:0')
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-            _, predicted, _ = cal_acc(outputs.logits, labels, choices)
-            logger.info(f'output lengths: {len(predicted)} '
-                        f'(Expected: {len(input_ids)})')
+            _, new_logits, predicted, _ = cal_acc(outputs.logits, labels,
+                                                  choices)
             predicted_indices += predicted.tolist()
 
-        logger.info(f'Last better index: {list(last_better_idx)} '
-                    f'({len(last_better_idx)})')
-        logger.info(f'Predicted indices: {predicted_indices} '
-                    f'({len(predicted_indices)})')
+            # results_display.write(f'{new_logits}\n\n')
+            # results_display.write(f'Input ID: {input_ids.shape} '
+            #                       f'Labels shape: {labels.shape} '
+            #                       f'Outputs shape: {outputs.logits.shape}\n')
+            # results_display.flush()
+
+            # sample = eval_dataset[idx]
+            # results_display.write(
+            # f'Post:\n{sample["post"]}\n\n'
+            # f'Summary A:\n{sample["summary_A"]}\n\n'
+            # f'Summary B:\n{sample["summary_B"]}\n\n'
+            # f'Model-choice: {chr(predicted[0] + ord("A"))}\n\n')
+            # results_display.write('==========================\n\n')
+            # results_display.flush()
+
+        # results_display.close()
+
+        # logger.info(f'Last better index: {list(last_better_idx)} '
+        #             f'({len(last_better_idx)})')
+        # logger.info(f'Predicted indices: {predicted_indices} '
+        #             f'({len(predicted_indices)})')
         predicted_indices = np.array(predicted_indices)
         last_better_idx[predicted_indices == 0] = i
 
     # print the final results
     return last_better_idx
+
+
+def best_of_n_local(model,
+                    dataset,
+                    tokenizer,
+                    n=16,
+                    num_clients=1,
+                    output_dir=None):
+    clients_best_idx = []
+    for client_id in range(num_clients):
+        logger.info(f'============ Client {client_id+1} ============')
+        model.set_active_adapter(f'Client_{client_id+1}')
+        clients_best_idx.append(
+            best_of_n(model, dataset, tokenizer, n, output_dir))
+
+    # Choose the indices with most votes
+    array = np.array(clients_best_idx).T
+    majority_votes_idx = [
+        np.bincount(array[i]).argmax() for i in range(len(array))
+    ]
+
+    return clients_best_idx, majority_votes_idx
+
+
+def print_results(results_display, dataset, bsn_results):
+    for best_idx, sample in zip(bsn_results, dataset):
+        results_display.write(f'Subreddit: r/{sample["subreddit"]}\n\n'
+                              f'Title:\n{sample["title"]}\n\n'
+                              f'Post:\n{sample["post"]}\n\n'
+                              f'Best generated summary [[{best_idx}]]:\n'
+                              f'{sample["summaries"][best_idx]}\n\n')
+        results_display.write('==========================\n\n')
+        results_display.flush()
 
 
 @torch.no_grad()
@@ -208,6 +248,11 @@ def main():
     update_logger(init_cfg, clear_before_add=True)
     setup_seed(init_cfg.seed)
 
+    import logging
+    global logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
     # Load the generation config
     gen_cfg = init_cfg.clone()
     if gen_args.gen_cfg_file:
@@ -218,6 +263,7 @@ def main():
 
     # best_of_n dataset
     dataset = best_of_n_dataset(init_cfg, gen_cfg, n=16)
+    # dataset = dataset[:1000]
 
     # get model and tokenizer
     model_name, _ = init_cfg.model.type.split('@')
@@ -244,17 +290,28 @@ def main():
     # model = model.merge_and_unload()
 
     # get the best-of-n results and display them
-    results = best_of_n(model, dataset, tokenizer, n=16)
-    results_display = open(os.path.join(init_cfg.outdir, 'test_results.txt'),
-                           'w')
-    for best_idx, sample in zip(results, dataset):
-        results_display.write(f'Subreddit: r/{sample["subreddit"]}\n\n'
-                              f'Title:\n{sample["title"]}\n\n'
-                              f'Post:\n{sample["post"]}\n\n'
-                              f'Best generated summary [[{best_idx}]]:\n'
-                              f'{sample["summaries"][best_idx]}\n\n')
-        results_display.write('==========================\n\n')
-        results_display.flush()
+    if init_cfg.llm.adapter.local_only:
+        clients_results, results = \
+            best_of_n_local(model, dataset, tokenizer, n=16,
+                            num_clients=init_cfg.federate.client_num,
+                            output_dir=init_cfg.outdir)
+        for i in range(init_cfg.federate.client_num):
+            path = os.path.join(init_cfg.outdir,
+                                f'test_results_client_{i+1}.txt')
+            print_results(open(path, 'w'), dataset, clients_results[i])
+            # evaluate best-of-n selection using auto_j
+            # evaluation(path)
+    else:
+        results = best_of_n(model,
+                            dataset,
+                            tokenizer,
+                            n=16,
+                            output_dir=init_cfg.outdir)
+
+    path = os.path.join(init_cfg.outdir, 'test_results.txt')
+    print_results(open(path, 'w'), dataset, results)
+    # evaluate best-of-n selection using auto_j
+    # evaluation(path)
 
 
 if __name__ == "__main__":
