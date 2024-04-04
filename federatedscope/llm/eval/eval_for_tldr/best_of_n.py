@@ -19,7 +19,7 @@ from federatedscope.llm.misc.fschat import FSChatBot
 from federatedscope.llm.dataloader.reddit_tldr import TLDR_PROMPT_DICT
 from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
     LLMDataset
-from federatedscope.llm.eval.eval_for_tldr.auto_j_vllm import evaluation
+# from federatedscope.llm.eval.eval_for_tldr.auto_j_vllm import evaluation
 
 logger = None
 
@@ -196,13 +196,20 @@ def best_of_n_local(model,
                     tokenizer,
                     n=16,
                     num_clients=1,
-                    output_dir=None):
+                    output_dir=None,
+                    print_client_result=True):
     clients_best_idx = []
     for client_id in range(num_clients):
         logger.info(f'============ Client {client_id+1} ============')
         model.set_active_adapter(f'Client_{client_id+1}')
         clients_best_idx.append(
             best_of_n(model, dataset, tokenizer, n, output_dir))
+        if print_client_result:
+            path = os.path.join(output_dir,
+                                f'test_results_client_{client_id+1}.txt')
+            print_results(open(path, 'w'), dataset, clients_best_idx[-1])
+            # # evaluate best-of-n selection using auto_j
+            # evaluation(path)
 
     # Choose the indices with most votes
     array = np.array(clients_best_idx).T
@@ -263,7 +270,7 @@ def main():
 
     # best_of_n dataset
     dataset = best_of_n_dataset(init_cfg, gen_cfg, n=16)
-    # dataset = dataset[:1000]
+    dataset = dataset[:500]
 
     # get model and tokenizer
     model_name, _ = init_cfg.model.type.split('@')
@@ -294,13 +301,8 @@ def main():
         clients_results, results = \
             best_of_n_local(model, dataset, tokenizer, n=16,
                             num_clients=init_cfg.federate.client_num,
-                            output_dir=init_cfg.outdir)
-        for i in range(init_cfg.federate.client_num):
-            path = os.path.join(init_cfg.outdir,
-                                f'test_results_client_{i+1}.txt')
-            print_results(open(path, 'w'), dataset, clients_results[i])
-            # evaluate best-of-n selection using auto_j
-            # evaluation(path)
+                            output_dir=init_cfg.outdir,
+                            print_client_result=True)
     else:
         results = best_of_n(model,
                             dataset,

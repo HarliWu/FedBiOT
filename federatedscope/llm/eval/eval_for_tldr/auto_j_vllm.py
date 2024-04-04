@@ -1,4 +1,5 @@
 import torch
+import os
 import numpy as np
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -53,7 +54,13 @@ def read_file(path='test_results.txt'):
     colletion = []
 
     tag = ''
-    record = {'subreddit': '', 'title': '', 'post': '', 'response': ''}
+    record = {
+        'subreddit': '',
+        'title': '',
+        'post': '',
+        'response': '',
+        'choice': 0
+    }
     for line in f.readlines():
         if 'Subreddit:' in line:
             record['subreddit'] = line.replace('Subreddit: ', '')
@@ -67,19 +74,29 @@ def read_file(path='test_results.txt'):
 
         elif 'generated summary' in line:
             tag = 'response'
+            if '[[' in line:
+                pos = line.rfind("[[")
+                pos2 = line.find("]]", pos)
+                record['choice'] = int(line[pos + len("[["):pos2].strip())
 
         elif '=============' in line:
             # The end of the record, which should be
             # appended to the collection
             for key in record.keys():
-                if record[key].endswith('\n\n'):
+                if type(record[key]) is str and record[key].endswith('\n\n'):
                     record[key] = record[key][:-2]
             query = ("Summarize the following post\n\n"
                      "Title: {title}\n\n"
                      "Post: {post}").format_map(record)
             record['query'] = query
             colletion.append(record)
-            record = {'subreddit': '', 'title': '', 'post': '', 'response': ''}
+            record = {
+                'subreddit': '',
+                'title': '',
+                'post': '',
+                'response': '',
+                'choice': 0
+            }
 
         else:
             # This is a normal line and should be
@@ -111,6 +128,44 @@ def evaluation(file_path):
     return auto_j_ratings, np.mean(auto_j_ratings)
 
 
+def evaluation_multiple_clients(dir, clients):
+    clients_choice, datasets = [], []
+    for client in clients:
+        datasets.append(
+            read_file(os.path.join(dir, f'test_results_client_{client}.txt')))
+        clients_choice.append([record['choice'] for record in datasets[-1]])
+
+    array = np.array(clients_choice).T
+    majority_votes_idx = [
+        np.bincount(array[i]).argmax() for i in range(len(array))
+    ]
+
+    best_response = [[] for _ in majority_votes_idx]
+    for dataset in datasets:
+        for idx, sample in enumerate(dataset):
+            if sample['choice'] == majority_votes_idx[idx]:
+                best_response[idx] = sample
+
+    auto_j_comments, auto_j_ratings = auto_j_eval_rating(best_response)
+
+    # print the evaluation results
+    with open(dir + '/selected_autoj_eval.txt', 'w') as f:
+        for sample, comment, rating in zip(best_response, auto_j_comments,
+                                           auto_j_ratings):
+            f.write(f'Subreddit: {sample["subreddit"]}\n\n'
+                    f'Title:\n{sample["title"]}\n\n'
+                    f'Post:\n{sample["post"]}\n\n'
+                    f'Best generated summary:\n{sample["response"]}\n\n'
+                    f'Auto-J Comment:\n{comment}\n\n'
+                    f'Auto-J Rating: {rating}\n\n')
+            f.write('==========================\n\n')
+            f.flush()
+        f.write(f'{auto_j_ratings}\n\n')
+        f.write(f'Average Auto-J Rating: {np.mean(auto_j_ratings)}\n\n')
+
+    return auto_j_ratings, np.mean(auto_j_ratings)
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
@@ -118,6 +173,15 @@ if __name__ == "__main__":
                         dest='file',
                         help='Path to model-generated outputs',
                         type=str)
+    parser.add_argument('--clients',
+                        dest='clients',
+                        help='Selected clients for evaluation',
+                        required=False,
+                        nargs='+',
+                        type=int)
     args = parser.parse_args()
 
-    evaluation(args.file)
+    if args.clients:
+        evaluation(args.file)
+    else:
+        evaluation_multiple_clients(args.file, args.clients)
