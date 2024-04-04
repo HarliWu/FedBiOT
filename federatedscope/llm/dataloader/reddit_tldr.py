@@ -177,7 +177,7 @@ def load_human_finetuning_dataset(data_root,
 
     # First 60% for fine-tuning, last 40% for rlhf
     idx = int(len(list_train_dict) * 0.6)
-    list_train_dict = list_train_dict[:idx] if rlhf else \
+    list_train_dict = list_train_dict[:idx] if not rlhf else \
         list_train_dict[idx:]
 
     train_dataset = LLMDataset(list_train_dict,
