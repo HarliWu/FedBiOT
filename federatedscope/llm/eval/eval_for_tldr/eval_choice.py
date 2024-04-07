@@ -119,8 +119,8 @@ def main():
         # format the input
         sample = {
             "post": "POST: ",
-            "summary_A": "SUMMARY A: ",
-            "summary_B": "SUMMARY B: ",
+            "output_A": "SUMMARY A: ",
+            "output_B": "SUMMARY B: ",
         }
         for seg in first_input.split("### "):
             for key in sample.keys():
@@ -130,8 +130,8 @@ def main():
 
         # write the first input and results to file
         results_display.write(f'Post:\n{sample["post"]}\n\n'
-                              f'Summary A:\n{sample["summary_A"]}\n\n'
-                              f'Summary B:\n{sample["summary_B"]}\n\n'
+                              f'Summary A:\n{sample["output_A"]}\n\n'
+                              f'Summary B:\n{sample["output_B"]}\n\n'
                               f'Human selected: {first_expected_choice}\n\n'
                               f'Model-choice: {first_actual_choice}\n\n')
         results_display.write('==========================\n\n')

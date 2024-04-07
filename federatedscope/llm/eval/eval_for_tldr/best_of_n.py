@@ -124,19 +124,19 @@ def best_of_n(model, dataset, tokenizer, n=16, output_dir=None):
         eval_dataset = []
 
         for better_idx, sample in zip(last_better_idx, dataset):
-            sample['summary_A'] = sample['summaries'][better_idx]
-            if sample['summary_A'].startswith(" ") is False:
-                sample['summary_A'] = " " + sample['summary_A']
-            sample['summary_B'] = sample['summaries'][i]
-            if sample['summary_B'].startswith(" ") is False:
-                sample['summary_B'] = " " + sample['summary_B']
+            sample['output_A'] = sample['summaries'][better_idx]
+            if sample['output_A'].startswith(" ") is False:
+                sample['output_A'] = " " + sample['output_A']
+            sample['output_B'] = sample['summaries'][i]
+            if sample['output_B'].startswith(" ") is False:
+                sample['output_B'] = " " + sample['output_B']
             sample['choice'] = random.choice([" A", " B"])
             eval_dataset.append({
                 'subreddit': sample['subreddit'],
                 'title': sample['title'],
                 'post': sample['post'],
-                'summary_A': sample['summary_B'],
-                'summary_B': sample['summary_A'],
+                'output_A': sample['output_B'],
+                'output_B': sample['output_A'],
                 'choice': sample['choice']
             })
 
@@ -172,8 +172,8 @@ def best_of_n(model, dataset, tokenizer, n=16, output_dir=None):
             # sample = eval_dataset[idx]
             # results_display.write(
             # f'Post:\n{sample["post"]}\n\n'
-            # f'Summary A:\n{sample["summary_A"]}\n\n'
-            # f'Summary B:\n{sample["summary_B"]}\n\n'
+            # f'Summary A:\n{sample["output_A"]}\n\n'
+            # f'Summary B:\n{sample["output_B"]}\n\n'
             # f'Model-choice: {chr(predicted[0] + ord("A"))}\n\n')
             # results_display.write('==========================\n\n')
             # results_display.flush()

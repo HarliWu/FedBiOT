@@ -25,8 +25,8 @@ TLDR_PROMPT_DICT = {
         "### SUBREDDIT: r/{subreddit}\n"
         "### TITLE: {title}\n"
         "### POST: {post}\n"
-        "### SUMMARY A:{summary_A}\n"
-        "### SUMMARY B:{summary_B}\n"
+        "### SUMMARY A:{output_A}\n"
+        "### SUMMARY B:{output_B}\n"
         "### YOUR CHOICE:")
 }
 
@@ -49,8 +49,8 @@ def _download_tldr_cmpr(data_root):
                                  subreddit='info.subreddit',
                                  title='info.title',
                                  post='info.post',
-                                 summary_A='summaries.0.text',
-                                 summary_B='summaries.1.text',
+                                 output_A='summaries.0.text',
+                                 output_B='summaries.1.text',
                                  category='worker',
                                  split='split',
                                  choice='choice')
@@ -143,6 +143,16 @@ def _tldr_human_for_prtraining(data_root):
     return list_train_dict, list_val_dict, list_test_dict
 
 
+def get_tldr_dataset(list_data_dict,
+                     tokenizer,
+                     prompt=TLDR_PROMPT_DICT['summary']):
+    return LLMDataset(list_data_dict,
+                      tokenizer,
+                      prompt_input=prompt,
+                      prompt_no_input=prompt,
+                      output_tag='summary')
+
+
 def load_human_annotated_dataset(data_root, tokenizer):
     list_train_dict, list_val_dict, list_test_dict = \
         _download_tldr_human(data_root)
@@ -171,7 +181,8 @@ def load_human_annotated_dataset(data_root, tokenizer):
 def load_human_finetuning_dataset(data_root,
                                   tokenizer,
                                   rlhf=False,
-                                  max_num_test=-1):
+                                  max_num_test=-1,
+                                  raw_no_prompt=False):
     list_train_dict, list_val_dict, list_test_dict = \
         _tldr_human_for_prtraining(data_root)
 
@@ -179,6 +190,12 @@ def load_human_finetuning_dataset(data_root,
     idx = int(len(list_train_dict) * 0.6)
     list_train_dict = list_train_dict[:idx] if not rlhf else \
         list_train_dict[idx:]
+    if raw_no_prompt:
+        if max_num_test > 0:
+            return (list_train_dict, list_val_dict[:max_num_test],
+                    list_test_dict[:max_num_test])
+        else:
+            return list_train_dict, list_val_dict, list_test_dict
 
     train_dataset = LLMDataset(list_train_dict,
                                tokenizer,
@@ -227,24 +244,24 @@ def load_comparison_dataset(data_root, tokenizer):
             tokenizer,
             prompt_input=TLDR_PROMPT_DICT['summary'],
             prompt_no_input=TLDR_PROMPT_DICT['summary'],
-            output_A='summary_A',
-            output_B='summary_B',
+            output_A='output_A',
+            output_B='output_B',
             choice='choice')
         val_dataset = LLMComparisonDataset(
             list_val_dict,
             tokenizer,
             prompt_input=TLDR_PROMPT_DICT['summary'],
             prompt_no_input=TLDR_PROMPT_DICT['summary'],
-            output_A='summary_A',
-            output_B='summary_B',
+            output_A='output_A',
+            output_B='output_B',
             choice='choice')
         test_dataset = LLMComparisonDataset(
             list_test_dict,
             tokenizer,
             prompt_input=TLDR_PROMPT_DICT['summary'],
             prompt_no_input=TLDR_PROMPT_DICT['summary'],
-            output_A='summary_A',
-            output_B='summary_B',
+            output_A='output_A',
+            output_B='output_B',
             choice='choice')
 
         # Store these three lists to a pickle file
@@ -282,8 +299,8 @@ def load_comparison_dataset_by_choice(data_root, tokenizer, max_num_test=-1):
         # and append the new training dataset to the list_train_dict
         exchange_list_train_dict = copy.deepcopy(list_train_dict)
         for sample in exchange_list_train_dict:
-            sample['summary_A'], sample['summary_B'] = \
-                sample['summary_B'], sample['summary_A']
+            sample['output_A'], sample['output_B'] = \
+                sample['output_B'], sample['output_A']
             sample['choice'] = 1 - sample['choice']
         list_train_dict = list_train_dict + exchange_list_train_dict
 
