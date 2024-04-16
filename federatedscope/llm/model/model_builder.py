@@ -1,3 +1,5 @@
+import os
+
 from federatedscope.llm.model.adapter_builder import AdapterModel
 from federatedscope.core.configs.config import global_cfg
 import torch
@@ -28,7 +30,7 @@ def get_model_from_modelscope(model_name, config, **kwargs):
     return AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
 
 
-def get_llm(config, **kwargs):
+def get_llm(config, load_from_prev_ckpt=False, **kwargs):
     from federatedscope.llm.dataloader import get_tokenizer
 
     model_config = config.model
@@ -46,10 +48,10 @@ def get_llm(config, **kwargs):
             path = config.model.load_from_local_pretrained_model_path
             ckpt = torch.load(path, map_location='cpu')
             logger.info('Successfully import the pretrained model '
-                        'from the checkpoint. ')
+                        f'from the checkpoint {path}. ')
             pretrained_model.load_state_dict(ckpt['model'])
         model = pretrained_model.merge_and_unload()
-        logger.info(type(model))
+        logger.info(f'Merge and unload to {type(model)}...')
     elif model_hub == 'huggingface_llm':
         model = get_model_from_huggingface(model_name=model_name,
                                            config=config,
@@ -85,5 +87,21 @@ def get_llm(config, **kwargs):
         model.append_adapters(adapter_names=[
             f'Client_{i+1}' for i in range(config.federate.client_num)
         ])
+
+    if load_from_prev_ckpt:
+        # Here we load from the most recent one
+        num_ckpt = config.federate.total_round_num // config.federate.save_freq
+        prefix = ['final_'] + \
+            [str(i*config.federate.save_freq) + '_'
+             for i in range(num_ckpt, -1, -1)] + ['']
+        dirname, filename = os.path.split(config.federate.save_to)
+        for pre in prefix:
+            if os.path.exists(os.path.join(dirname, pre + filename)):
+                ckpt_path = os.path.join(dirname, pre + filename)
+                ckpt = torch.load(ckpt_path, map_location='cpu')
+                model.load_state_dict(ckpt['model'])
+                logger.info(f'Model of Round {ckpt["cur_round"]} loads '
+                            f'from the checkpoint {ckpt_path}')
+                break
 
     return model
