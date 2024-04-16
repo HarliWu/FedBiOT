@@ -12,10 +12,12 @@ def extend_llm_cfg(cfg):
     # ---------------------------------------------------------------------- #
     cfg.llm = CN(new_allowed=True)
     cfg.llm.tok_len = 128
+    cfg.llm.max_new_token = 60
     cfg.llm.retry_on_nan_loss = False
 
     # Training the reward model
     cfg.llm.reward_coeff = 0.1
+    cfg.llm.rlhf = False
 
     # use gradient accumulation to enlarge the batch size
     # e.g., bsz = dataloader.batch_size * train.grad_accu_step

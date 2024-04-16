@@ -276,6 +276,43 @@ class RewardTrainer(LLMTrainer):
 
         return win_logps, lose_logps
 
+    def _hook_on_batch_backward(self, ctx):
+        if ctx.skip_this_batch:
+            return
+
+        if ctx.cfg.llm.accelerator.use:
+            self.accelerator.backward(ctx.loss_task)
+            ctx.optimizer.step()
+            if ctx.scheduler is not None:
+                ctx.scheduler.step()
+            ctx.optimizer.zero_grad()
+
+        elif ctx.cfg.llm.deepspeed.use:
+            ctx.model_engine.backward(ctx.loss_task)
+            ctx.model_engine.step()
+            if ctx.scheduler is not None:
+                ctx.scheduler.step()
+
+        else:
+            (ctx.loss_task / self.grad_accum_step).backward()
+
+            if (ctx.cur_batch_i + 1) % self.grad_accum_step == 0:
+                if ctx.grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(ctx.model.parameters(),
+                                                   ctx.grad_clip)
+                ctx.optimizer.step()
+                if ctx.scheduler is not None:
+                    ctx.scheduler.step()
+                ctx.optimizer.zero_grad()
+
+        # move the training data to cpu
+        ctx.data_batch['win_input_ids'].cpu()
+        ctx.data_batch['win_labels'].cpu()
+        ctx.data_batch['win_attention_mask'].cpu()
+        ctx.data_batch['lose_input_ids'].cpu()
+        ctx.data_batch['lose_labels'].cpu()
+        ctx.data_batch['lose_attention_mask'].cpu()
+
     def _hook_on_batch_end(self, ctx):
         # update statistics
         ctx.num_samples += ctx.batch_size

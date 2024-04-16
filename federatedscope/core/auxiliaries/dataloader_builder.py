@@ -84,7 +84,7 @@ def get_dataloader(dataset, config, split='train'):
             dataset = dataset[0].edge_index
     filtered_args = filter_dict(loader_cls.__init__, raw_args)
 
-    if config.data.type.lower().endswith('@llm-rlhf'):
+    if config.data.type.lower().endswith('@llm-rlhf') or config.llm.rlhf:
         from federatedscope.llm.dataloader import get_tokenizer, \
             LLMRewardCollator
         model_name, _ = config.model.type.split('@')
@@ -93,7 +93,7 @@ def get_dataloader(dataset, config, split='train'):
         data_collator = LLMRewardCollator(tokenizer=tokenizer)
         filtered_args['collate_fn'] = data_collator
 
-    if config.data.type.lower().endswith('@llm'):
+    elif config.data.type.lower().endswith('@llm'):
         from federatedscope.llm.dataloader import get_tokenizer, \
             LLMDataCollator
         model_name, _ = config.model.type.split('@')
