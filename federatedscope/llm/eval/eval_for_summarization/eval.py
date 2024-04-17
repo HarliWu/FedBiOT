@@ -34,7 +34,6 @@ def main():
     # load your finetuned model (saved as xxx.ckpt)
     #    in yaml file federate.save_to
     fschatbot = FSChatBot(init_cfg)
-    # raw_fschatbot = FSChatBot(init_cfg, use_raw=True)
 
     # Get test file
     fp = os.path.join(init_cfg.data.root, 'reddit-tldr_test.jsonl')
@@ -65,39 +64,18 @@ def main():
                 top_p=1.0,
                 temperature=0.0,
                 do_sample=False,
-                max_new_tokens=60,
+                max_new_tokens=init_cfg.llm.max_new_token,
             )
             model_completions = fschatbot.generate(input_text, generate_kwargs)
 
-            results_display.write(f'Post:\n{sample["post"]}\n\n'
-                                  f'Human summary:\n{sample["summary"]}\n\n')
-            for i, completion in enumerate(model_completions):
-                results_display.write(
-                    f'Model-generated summary {i}:\n{completion}\n\n')
+            results_display.write(
+                f'Post:\n{sample["post"]}\n\n'
+                f'Human summary:\n{sample["summary"]}\n\n'
+                f'Model-generated summary 0:\n{model_completions}\n\n')
 
             results_display.write('==========================\n\n')
             results_display.flush()
 
-        #     predictions.append(model_completion)
-        #     references.append(sample["summary"])
-
-        # bleu = evaluate.load("bleu")
-        # bleu_results = bleu.compute(predictions=predictions,
-        #                             references=[[ref]
-        #                                         for ref in references])
-        # print(bleu_results)
-        # results_display.write(f'bleu: {bleu_results}\n\n')
-
-        # rouge = evaluate.load("rouge")
-        # rouge_results = rouge.compute(predictions=predictions,
-        #                               references=references)
-        # print(rouge_results)
-        # results_display.write(f'rouge: {rouge_results}\n\n')
-
-        # results_display.close()
-
-        # print('load the next model...')
-        # fschatbot.next_model()
     except Exception as err:
         print(f'{err}, so finished all evaluations....')
 
