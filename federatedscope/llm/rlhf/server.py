@@ -83,7 +83,7 @@ class RLHF_finetuning:
         self._monitor = Monitor(config, monitored_object=self)
 
     def train(self):
-        fp = os.path.join(self.data_root, 'generated_rlhf_data.jsonl')
+        fp = os.path.join(self.data_root, 'generated_rlhf_data.json')
 
         if os.path.exists(fp):
             list_train_dict = json.load(open(fp, "r"))
