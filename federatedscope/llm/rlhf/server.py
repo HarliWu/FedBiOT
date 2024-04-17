@@ -44,8 +44,9 @@ def get_rlhf_dataset(config):
     if dataset_name.lower() == 'reddit-tldr-rlhf':
         from federatedscope.llm.dataloader.reddit_tldr import \
             load_human_finetuning_dataset, TLDR_PROMPT_DICT
+        data_root = os.path.join(config.data.root, 'reddit-tldr-comparison')
         list_train_dict, _, _ = \
-            load_human_finetuning_dataset(config.data.root,
+            load_human_finetuning_dataset(data_root,
                                           tokenizer=None,
                                           rlhf=True,
                                           max_num_test=1000,
@@ -53,7 +54,7 @@ def get_rlhf_dataset(config):
         generation_prompt = TLDR_PROMPT_DICT['summary']
         selector_prompt = TLDR_PROMPT_DICT['summary_cmp']
 
-    return list_train_dict, generation_prompt, selector_prompt
+    return data_root, list_train_dict, generation_prompt, selector_prompt
 
 
 class RLHF_finetuning:
@@ -69,7 +70,8 @@ class RLHF_finetuning:
                  device='cpu',
                  **kwargs):
         # obtain RLHF input data
-        self.list_train_dict, self.generation_prompt, self.selector_prompt = \
+        self.data_root, self.list_train_dict, \
+            self.generation_prompt, self.selector_prompt = \
             get_rlhf_dataset(config)
 
         self.config = config
@@ -81,7 +83,7 @@ class RLHF_finetuning:
         self._monitor = Monitor(config, monitored_object=self)
 
     def train(self):
-        fp = os.path.join(self.config.data.root, 'generated_rlhf_data.jsonl')
+        fp = os.path.join(self.data_root, 'generated_rlhf_data.jsonl')
 
         if os.path.exists(fp):
             list_train_dict = json.load(open(fp, "r"))
