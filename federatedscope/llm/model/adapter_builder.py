@@ -232,10 +232,16 @@ class AdapterModel(nn.Module):
                 new_state_dict[k] = v
         return new_state_dict
 
-    def save_model(self, path, state=0, merge_adapter=False):
+    def save_model(self,
+                   path,
+                   state=0,
+                   merge_adapter=False,
+                   return_trainable=True):
         if merge_adapter and isinstance(self.model, PeftModel):
             merged_model = self.model.merge_and_unload()
             ckpt = {'cur_round': state, 'model': merged_model.state_dict()}
+        elif return_trainable:
+            ckpt = {'cur_round': state, 'model': self.state_dict()}
         else:
             ckpt = {'cur_round': state, 'model': self.model.state_dict()}
         torch.save(ckpt, path)
