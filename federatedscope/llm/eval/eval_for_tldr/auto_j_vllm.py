@@ -182,6 +182,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.clients:
-        evaluation(args.file)
-    else:
         evaluation_multiple_clients(args.file, args.clients)
+    else:
+        evaluation(args.file)
