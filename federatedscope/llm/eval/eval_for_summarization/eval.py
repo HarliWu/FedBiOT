@@ -69,6 +69,8 @@ def main():
             model_completions = fschatbot.generate(input_text, generate_kwargs)
 
             results_display.write(
+                f'Subreddit: r/{sample["subreddit"]}\n\n'
+                f'Title:\n{sample["title"]}\n\n'
                 f'Post:\n{sample["post"]}\n\n'
                 f'Human summary:\n{sample["summary"]}\n\n'
                 f'Model-generated summary 0:\n{model_completions}\n\n')
