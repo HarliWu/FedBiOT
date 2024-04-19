@@ -142,7 +142,7 @@ class RLHF_finetuning:
                                                           return_raw=True)
             logger.info(train_log_res)
             # Save the checkpoint
-            if r % self.config.federate.save_freq == 0:
+            if (r + 1) % self.config.federate.save_freq == 0:
                 path = add_prefix_to_path(f'{r}_',
                                           self.config.federate.save_to)
                 self.model.save_model(path=path, state=r)
