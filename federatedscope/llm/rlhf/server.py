@@ -83,28 +83,34 @@ class RLHF_finetuning:
         self._monitor = Monitor(config, monitored_object=self)
 
     def train(self):
-        fp = os.path.join(self.data_root, 'generated_rlhf_data.json')
+        saveto = self.config.federate.save_to
+        # This file save selector's choices
+        fp = os.path.join(self.data_root, f'generated_rlhf_data_{saveto}.json')
 
         if os.path.exists(fp):
             list_train_dict = json.load(open(fp, "r"))
 
         else:
-            # generate the output
-            list_train_dict = self._generate_pairwise_data(
-                self.list_train_dict,
-                self.model,
-                self.tokenizer,
-                self.generation_prompt,
-                max_new_tokens=self.config.llm.max_new_token)
+            # This file save the generated texts of original model
+            gen_fp = os.path.join(self.data_root, 'generated_rlhf_data.json')
+            if not os.path.exists(gen_fp):
+                # generate the output
+                list_train_dict = self._generate_pairwise_data(
+                    self.list_train_dict,
+                    self.model,
+                    self.tokenizer,
+                    self.generation_prompt,
+                    max_new_tokens=self.config.llm.max_new_token)
 
-            # save the data to a file
+                # save the data to a file
+                json.dump(list_train_dict, open(gen_fp, "w"))
+
+            # choose the better one based on the given output
+            list_train_dict = self._choose_better_response(
+                list_train_dict, self.selector_model, self.selector_tokenizer,
+                self.selector_prompt)
+            # save the choice to a file
             json.dump(list_train_dict, open(fp, "w"))
-
-        # choose the better one based on the given output
-        list_train_dict = self._choose_better_response(list_train_dict,
-                                                       self.selector_model,
-                                                       self.selector_tokenizer,
-                                                       self.selector_prompt)
 
         # load comparison dataset
         train_dataset = LLMComparisonDataset(
@@ -136,8 +142,10 @@ class RLHF_finetuning:
                                                           return_raw=True)
             logger.info(train_log_res)
             # Save the checkpoint
-            path = add_prefix_to_path(f'{r}_', self.config.federate.save_to)
-            self.model.save_model(path=path, state=r)
+            if r % self.config.federate.save_freq == 0:
+                path = add_prefix_to_path(f'{r}_',
+                                          self.config.federate.save_to)
+                self.model.save_model(path=path, state=r)
 
     def _generate_pairwise_data(self,
                                 list_data_dict,
