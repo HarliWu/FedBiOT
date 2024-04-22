@@ -463,6 +463,15 @@ def load_llm_dataset(config=None, **kwargs):
                                                     tokenizer,
                                                     max_num_test=1000)
 
+    elif dataset_name.lower() == 'shp-comparison':
+        from federatedscope.llm.dataloader.shp import \
+            load_shp_cmp_dataset
+        data_root = os.path.join(config.data.root, 'shp')
+        dataset = load_shp_cmp_dataset(data_root,
+                                       tokenizer,
+                                       config,
+                                       max_num_test=1000)
+
     else:
         raise ValueError(f'Not support data type {dataset_name}.')
 
