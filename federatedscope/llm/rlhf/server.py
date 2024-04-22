@@ -83,9 +83,9 @@ class RLHF_finetuning:
         self._monitor = Monitor(config, monitored_object=self)
 
     def train(self):
-        saveto = self.config.federate.save_to
+        _, saveto = os.path.split(self.config.federate.save_to)
         # This file save selector's choices
-        fp = os.path.join(self.data_root, f'generated_rlhf_data_{saveto}.json')
+        fp = os.path.join(self.data_root, f'generated_choose_{saveto}.json')
 
         if os.path.exists(fp):
             list_train_dict = json.load(open(fp, "r"))
@@ -93,7 +93,10 @@ class RLHF_finetuning:
         else:
             # This file save the generated texts of original model
             gen_fp = os.path.join(self.data_root, 'generated_rlhf_data.json')
-            if not os.path.exists(gen_fp):
+            if os.path.exists(gen_fp):
+                list_train_dict = json.load(open(gen_fp, "r"))
+
+            else:
                 # generate the output
                 list_train_dict = self._generate_pairwise_data(
                     self.list_train_dict,
@@ -143,7 +146,7 @@ class RLHF_finetuning:
             logger.info(train_log_res)
             # Save the checkpoint
             if (r + 1) % self.config.federate.save_freq == 0:
-                path = add_prefix_to_path(f'{r}_',
+                path = add_prefix_to_path(f'{r + 1}_',
                                           self.config.federate.save_to)
                 self.model.save_model(path=path, state=r)
 
