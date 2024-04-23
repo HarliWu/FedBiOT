@@ -207,8 +207,8 @@ def load_shp_cmp_dataset(data_root, tokenizer, config, max_num_test=-1):
                                   output_tag='choice')
 
         # Store these three lists to a pickle file
-        with open(train_fp, 'rb') as f_train, open(valid_fp, 'rb') as f_val, \
-                open(test_fp, 'rb') as f_test:
+        with open(train_fp, 'wb') as f_train, open(valid_fp, 'wb') as f_val, \
+                open(test_fp, 'wb') as f_test:
             pickle.dump(train_dataset, f_train)
             pickle.dump(val_dataset, f_val)
             pickle.dump(test_dataset, f_test)
