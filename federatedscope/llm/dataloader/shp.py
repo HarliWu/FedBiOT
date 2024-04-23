@@ -37,6 +37,7 @@ def _download_shp_cmpr(data_root):
         'instruction': 'instruction',
         'output_A': 'output_A',
         'output_B': 'output_B',
+        'choice': 'choice',
         'category': 'category'
     }
     if os.path.exists(train_fp) and os.path.exists(valid_fp) and \
