@@ -222,10 +222,10 @@ class Context(LifecycleDict):
         return self._calculate_batch_epoch_num(mode='test')[2]
 
     def _calculate_batch_epoch_num(self, mode='train'):
-        if self.cur_mode is not None and self.cur_mode != mode:
-            logger.warning(
-                f'cur_mode `{self.cur_mode}` mismatch mode `{mode}`, '
-                f'will use `{mode}` to calculate `ctx.var`.')
+        # if self.cur_mode is not None and self.cur_mode != mode:
+        #     logger.warning(
+        #         f'cur_mode `{self.cur_mode}` mismatch mode `{mode}`, '
+        #         f'will use `{mode}` to calculate `ctx.var`.')
         if self.cur_split is None:
             logger.warning(
                 f'cur_split `{self.cur_split}` not found in data_split, '
