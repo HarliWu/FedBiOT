@@ -17,7 +17,8 @@ from federatedscope.core.auxiliaries.logging import update_logger
 from federatedscope.core.configs.config import global_cfg
 from federatedscope.llm.model.model_builder import get_llm
 from federatedscope.llm.dataloader.dataloader import get_tokenizer
-from federatedscope.llm.rlhf.server import RLHF_finetuning
+from federatedscope.llm.rlhf.standalone_training import \
+    RLHF_finetuning
 
 if os.environ.get('https_proxy'):
     del os.environ['https_proxy']

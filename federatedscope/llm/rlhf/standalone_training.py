@@ -12,7 +12,8 @@ from federatedscope.llm.dataloader import LLMDataCollator
 from federatedscope.llm.dataloader.dataloader import load_jsonl
 from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
     LLMDataset, LLMComparisonDataset
-from federatedscope.llm.trainer.reward_trainer import RewardTrainer
+from federatedscope.llm.trainer.reward_trainer import RewardTrainer, \
+    _get_batch_logps, dpo_loss
 from federatedscope.core.auxiliaries.utils import add_prefix_to_path
 
 logger = logging.getLogger(__name__)
@@ -82,8 +83,9 @@ class RLHF_finetuning:
         self.device = device
         self._monitor = Monitor(config, monitored_object=self)
 
-    def train(self):
-        _, saveto = os.path.split(self.config.federate.save_to)
+    def train(self, saveto=None):
+        if saveto is None:
+            _, saveto = os.path.split(self.config.federate.save_to)
         # This file save selector's choices
         fp = os.path.join(self.data_root, f'generated_choose_{saveto}.json')
 
@@ -92,7 +94,8 @@ class RLHF_finetuning:
 
         else:
             # This file save the generated texts of original model
-            gen_fp = os.path.join(self.data_root, 'generated_rlhf_data.json')
+            gen_fp = os.path.join(self.data_root,
+                                  f'generated_rlhf_data_{saveto}.json')
             if os.path.exists(gen_fp):
                 list_train_dict = json.load(open(gen_fp, "r"))
 
@@ -136,7 +139,7 @@ class RLHF_finetuning:
 
         # start training
         for r in range(self.config.federate.total_round_num):
-            logger.info(f'----------- Starting a new training round '
+            logger.info(f'----------- Starting a new RLHF training round '
                         f'(Round #{r}) -------------')
             sample_size, model_para_all, results = self.trainer.train()
             train_log_res = self._monitor.format_eval_res(results,
@@ -146,8 +149,12 @@ class RLHF_finetuning:
             logger.info(train_log_res)
             # Save the checkpoint
             if (r + 1) % self.config.federate.save_freq == 0:
-                path = add_prefix_to_path(f'{r + 1}_',
-                                          self.config.federate.save_to)
+                if saveto in self.config.federate.save_to:
+                    path = add_prefix_to_path(f'{r + 1}_',
+                                              self.config.federate.save_to)
+                else:
+                    path = add_prefix_to_path(f'{r + 1}_{saveto}_',
+                                              self.config.federate.save_to)
                 self.model.save_model(path=path, state=r)
 
     def _generate_pairwise_data(self,
@@ -193,6 +200,7 @@ class RLHF_finetuning:
 
         return list_data_dict
 
+    @torch.no_grad()
     def _choose_better_response(self, list_data_dict, model, tokenizer,
                                 prompt):
         choices = [tokenizer(f'{c}')['input_ids'][-1] for c in ['A', 'B']]
@@ -218,6 +226,91 @@ class RLHF_finetuning:
             attention_mask = data_batch["attention_mask"].to('cuda:0')
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
             _, _, predicted, _ = cal_acc(outputs.logits, labels, choices)
+            predicted_indices += predicted.tolist()
+
+        for choice, sample in zip(predicted_indices, list_data_dict):
+            sample['choice'] = choice
+            sample.pop('fake_choice', None)
+
+        return list_data_dict
+
+    def dpo_better_response(self):
+        # generate the output
+        list_train_dict = self._generate_pairwise_data(
+            self.list_train_dict,
+            self.model,
+            self.tokenizer,
+            self.generation_prompt,
+            max_new_tokens=self.config.llm.max_new_token)
+
+        return self._dpo_better_response(list_train_dict, self.model,
+                                         self.tokenizer,
+                                         self.generation_prompt)
+
+    @torch.no_grad()
+    def _dpo_better_response(self, list_data_dict, model, tokenizer, prompt):
+        for sample in list_data_dict:
+            sample['fake_choice'] = random.choice([0, 1])
+
+        dataset = LLMComparisonDataset(list_data_dict,
+                                       tokenizer,
+                                       prompt_input=prompt,
+                                       prompt_no_input=prompt,
+                                       output_A='output_A',
+                                       output_B='output_B',
+                                       choice='fake_choice')
+
+        dataloader = DataLoader(dataset)
+
+        predicted_indices = []
+        for idx, data_batch in enumerate(tqdm(dataloader)):
+            win_input_ids = data_batch['win_input_ids'].to('cuda:0')
+            win_labels = data_batch['win_labels'].to('cuda:0')
+            win_attention_mask = data_batch['win_attention_mask'].to('cuda:0')
+            ref_win_outputs = model(disable_adapter=True,
+                                    input_ids=win_input_ids,
+                                    labels=win_labels,
+                                    attention_mask=win_attention_mask)
+            ref_win_logps = _get_batch_logps(ref_win_outputs.logits,
+                                             win_labels,
+                                             average_log_prob=False)
+            policy_win_outputs = model(disable_adapter=False,
+                                       input_ids=win_input_ids,
+                                       labels=win_labels,
+                                       attention_mask=win_attention_mask)
+            policy_win_logps = _get_batch_logps(policy_win_outputs.logits,
+                                                win_labels,
+                                                average_log_prob=False)
+
+            lose_input_ids = data_batch['lose_input_ids'].to('cuda:0')
+            lose_labels = data_batch['lose_labels'].to('cuda:0')
+            lose_attention_mask = data_batch['lose_attention_mask'].to(
+                'cuda:0')
+            ref_lose_outputs = model(disable_adapter=True,
+                                     input_ids=lose_input_ids,
+                                     labels=lose_labels,
+                                     attention_mask=lose_attention_mask)
+            ref_lose_logps = _get_batch_logps(ref_lose_outputs.logits,
+                                              lose_labels,
+                                              average_log_prob=False)
+            policy_lose_outputs = model(disable_adapter=False,
+                                        input_ids=lose_input_ids,
+                                        labels=lose_labels,
+                                        attention_mask=lose_attention_mask)
+            policy_lose_logps = _get_batch_logps(policy_lose_outputs.logits,
+                                                 lose_labels,
+                                                 average_log_prob=False)
+
+            # DPO for reward calculation
+            _, win_rewards, lose_rewards = dpo_loss(policy_win_logps,
+                                                    policy_lose_logps,
+                                                    ref_win_logps,
+                                                    ref_lose_logps,
+                                                    beta=1.0)
+
+            predicted = torch.where(win_rewards.cpu() > lose_rewards.cpu(),
+                                    torch.zeros(len(win_input_ids)),
+                                    torch.ones(len(win_input_ids)))
             predicted_indices += predicted.tolist()
 
         for choice, sample in zip(predicted_indices, list_data_dict):
