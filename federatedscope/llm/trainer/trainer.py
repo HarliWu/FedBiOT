@@ -75,17 +75,22 @@ class LLMTrainer(GeneralTorchTrainer):
 
     @lifecycle(LIFECYCLE.BATCH)
     def _run_batch(self, hooks_set, run_step=-1):
+        if self.ctx.cur_mode in [MODE.TRAIN, MODE.FINETUNE]:
+            grad_accum_step = self.grad_accum_step
+        else:
+            grad_accum_step = 1
+
         if run_step == -1:
             run_step = getattr(self.ctx, f"num_{self.ctx.cur_split}_batch")
             if self._cfg.train.batch_or_epoch == 'epoch':
-                run_step = math.ceil(run_step / self.grad_accum_step)
+                run_step = math.ceil(run_step / grad_accum_step)
 
         for batch_i in range(run_step):
             self.ctx.cur_batch_i = CtxVar(batch_i, LIFECYCLE.BATCH)
 
             if hasattr(self, 'accelerator'):
                 # Build gradient accumulation upon accelerator
-                for _ in range(self.grad_accum_step):
+                for _ in range(grad_accum_step):
                     with self.accelerator.accumulate(self.ctx.model):
                         for hook in hooks_set["on_batch_start"]:
                             hook(self.ctx)
@@ -100,9 +105,9 @@ class LLMTrainer(GeneralTorchTrainer):
                             hook(self.ctx)
 
             else:
-                for idx in range(self.grad_accum_step):
+                for idx in range(grad_accum_step):
                     self.ctx.cur_batch_i = CtxVar(
-                        batch_i * self.grad_accum_step + idx, LIFECYCLE.BATCH)
+                        batch_i * grad_accum_step + idx, LIFECYCLE.BATCH)
 
                     for hook in hooks_set["on_batch_start"]:
                         hook(self.ctx)
