@@ -96,8 +96,9 @@ def get_llm(config, load_from_prev_ckpt=False, **kwargs):
              for i in range(num_ckpt, -1, -1)] + ['']
         dirname, filename = os.path.split(config.federate.save_to)
         for pre in prefix:
-            if os.path.exists(os.path.join(dirname, pre + filename)):
-                ckpt_path = os.path.join(dirname, pre + filename)
+            ckpt_path = os.path.join(dirname, pre + filename)
+            logger.info(f'Attempt to load from {ckpt_path}')
+            if os.path.exists(ckpt_path):
                 ckpt = torch.load(ckpt_path, map_location='cpu')
                 model.load_state_dict(ckpt['model'])
                 logger.info(f'Model of Round {ckpt["cur_round"]} loads '
