@@ -68,13 +68,13 @@ def _download_tldr_cmpr(data_root):
 
 
 def _download_tldr_human(data_root):
-    train_fp, valid_fp, test_fp = [
+    train_fp, val_fp, test_fp = [
         os.path.join(data_root, 'reddit-tldr_train.jsonl'),
-        os.path.join(data_root, 'reddit-tldr_valid.jsonl'),
+        os.path.join(data_root, 'reddit-tldr_val.jsonl'),
         os.path.join(data_root, 'reddit-tldr_test.jsonl')
     ]
 
-    for name, fp in [('train', train_fp), ('valid', valid_fp),
+    for name, fp in [('train', train_fp), ('valid', val_fp),
                      ('test', test_fp)]:
         if not os.path.exists(fp):
             download_url(
@@ -90,16 +90,16 @@ def _download_tldr_human(data_root):
         'summary': 'summary'
     }
     list_train_dict = load_jsonl(train_fp, **dataloader_kwargs)
-    list_val_dict = load_jsonl(valid_fp, **dataloader_kwargs)
+    list_val_dict = load_jsonl(val_fp, **dataloader_kwargs)
     list_test_dict = load_jsonl(test_fp, **dataloader_kwargs)
 
     return list_train_dict, list_val_dict, list_test_dict
 
 
 def _tldr_human_for_prtraining(data_root):
-    train_fp, valid_fp, test_fp = [
+    train_fp, val_fp, test_fp = [
         os.path.join(data_root, 'reddit-tldr_train_finetune.jsonl'),
-        os.path.join(data_root, 'reddit-tldr_valid_finetune.jsonl'),
+        os.path.join(data_root, 'reddit-tldr_val_finetune.jsonl'),
         os.path.join(data_root, 'reddit-tldr_test_finetune.jsonl')
     ]
 
@@ -109,10 +109,10 @@ def _tldr_human_for_prtraining(data_root):
         'post': 'post',
         'summary': 'summary'
     }
-    if os.path.exists(train_fp) and os.path.exists(valid_fp) and \
+    if os.path.exists(train_fp) and os.path.exists(val_fp) and \
             os.path.exists(test_fp):
         list_train_dict = load_jsonl(train_fp, **dataloader_kwargs)
-        list_val_dict = load_jsonl(valid_fp, **dataloader_kwargs)
+        list_val_dict = load_jsonl(val_fp, **dataloader_kwargs)
         list_test_dict = load_jsonl(test_fp, **dataloader_kwargs)
 
     else:
@@ -133,7 +133,7 @@ def _tldr_human_for_prtraining(data_root):
 
         # Add a space to the start of a summary, and save to file
         for fp, list_dict in [(train_fp, list_train_dict),
-                              (valid_fp, list_val_dict),
+                              (val_fp, list_val_dict),
                               (test_fp, list_test_dict)]:
             with open(fp, "w") as file:
                 for sample in list_dict:

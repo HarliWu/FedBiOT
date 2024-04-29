@@ -27,9 +27,9 @@ SHP_PROMPT_DICT = {
 
 
 def _download_shp_cmpr(data_root):
-    train_fp, valid_fp, test_fp = [
+    train_fp, val_fp, test_fp = [
         os.path.join(data_root, 'shp_cmpr_train.jsonl'),
-        os.path.join(data_root, 'shp_cmpr_valid.jsonl'),
+        os.path.join(data_root, 'shp_cmpr_val.jsonl'),
         os.path.join(data_root, 'shp_cmpr_test.jsonl')
     ]
 
@@ -40,10 +40,10 @@ def _download_shp_cmpr(data_root):
         'choice': 'choice',
         'category': 'category'
     }
-    if os.path.exists(train_fp) and os.path.exists(valid_fp) and \
+    if os.path.exists(train_fp) and os.path.exists(val_fp) and \
             os.path.exists(test_fp):
         list_train_dict = load_jsonl(train_fp, **dataloader_kwargs)
-        list_val_dict = load_jsonl(valid_fp, **dataloader_kwargs)
+        list_val_dict = load_jsonl(val_fp, **dataloader_kwargs)
         list_test_dict = load_jsonl(test_fp, **dataloader_kwargs)
 
     else:
@@ -51,7 +51,7 @@ def _download_shp_cmpr(data_root):
         list_train_dict, list_val_dict, list_test_dict = [], [], []
         tag_fp = {
             'train': (train_fp, list_train_dict),
-            'validation': (valid_fp, list_val_dict),
+            'validation': (val_fp, list_val_dict),
             'test': (test_fp, list_test_dict)
         }
         for tag, (fp, list_data_dict) in tag_fp.items():
@@ -77,17 +77,17 @@ def _download_shp_cmpr(data_root):
 
 
 def _download_shp(data_root):
-    train_fp, valid_fp, test_fp = [
+    train_fp, val_fp, test_fp = [
         os.path.join(data_root, 'shp_rlhf_train.jsonl'),
-        os.path.join(data_root, 'shp_rlhf_valid.jsonl'),
+        os.path.join(data_root, 'shp_rlhf_val.jsonl'),
         os.path.join(data_root, 'shp_rlhf_test.jsonl')
     ]
 
     dataloader_kwargs = {'instruction': 'instruction', 'category': 'category'}
-    if os.path.exists(train_fp) and os.path.exists(valid_fp) and \
+    if os.path.exists(train_fp) and os.path.exists(val_fp) and \
             os.path.exists(test_fp):
         list_train_dict = load_jsonl(train_fp, **dataloader_kwargs)
-        list_val_dict = load_jsonl(valid_fp, **dataloader_kwargs)
+        list_val_dict = load_jsonl(val_fp, **dataloader_kwargs)
         list_test_dict = load_jsonl(test_fp, **dataloader_kwargs)
 
     else:
@@ -96,7 +96,7 @@ def _download_shp(data_root):
         list_train_dict, list_val_dict, list_test_dict = [], [], []
         tag_fp = {
             'train': (train_fp, list_train_dict),
-            'validation': (valid_fp, list_val_dict),
+            'validation': (val_fp, list_val_dict),
             'test': (test_fp, list_test_dict)
         }
         for tag, (fp, list_data_dict) in tag_fp.items():
@@ -137,15 +137,15 @@ def load_rlhf_dataset(data_root,
 
 def load_shp_cmp_dataset(data_root, tokenizer, config, max_num_test=-1):
     num_clients = config.federate.client_num
-    train_fp, valid_fp, test_fp = [
+    train_fp, val_fp, test_fp = [
         os.path.join(data_root, f'train_choice_{num_clients}.pickle'),
         os.path.join(data_root, 'val_choice.pickle'),
         os.path.join(data_root, 'test_choice.pickle')
     ]
 
-    if os.path.exists(train_fp) and os.path.exists(
-            valid_fp) and os.path.exists(test_fp):
-        with open(train_fp, 'rb') as f_train, open(valid_fp, 'rb') as f_val, \
+    if os.path.exists(train_fp) and os.path.exists(val_fp) and os.path.exists(
+            test_fp):
+        with open(train_fp, 'rb') as f_train, open(val_fp, 'rb') as f_val, \
                 open(test_fp, 'rb') as f_test:
             train_dataset = pickle.load(f_train)
             val_dataset = pickle.load(f_val)
@@ -208,7 +208,7 @@ def load_shp_cmp_dataset(data_root, tokenizer, config, max_num_test=-1):
                                   output_tag='choice')
 
         # Store these three lists to a pickle file
-        with open(train_fp, 'wb') as f_train, open(valid_fp, 'wb') as f_val, \
+        with open(train_fp, 'wb') as f_train, open(val_fp, 'wb') as f_val, \
                 open(test_fp, 'wb') as f_test:
             pickle.dump(train_dataset, f_train)
             pickle.dump(val_dataset, f_val)
