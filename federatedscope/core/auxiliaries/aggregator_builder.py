@@ -61,6 +61,8 @@ def get_aggregator(method, model=None, device=None, online=False, config=None):
             AsynClientsAvgAggregator, KrumAggregator, \
             MedianAggregator, TrimmedmeanAggregator, \
             BulyanAggregator,  NormboundingAggregator
+        from federatedscope.llm.llm_local.aggregator import \
+            MultiLoRAAvgAggregator
 
     STR2AGG = {
         'fedavg': ClientsAvgAggregator,
@@ -98,6 +100,10 @@ def get_aggregator(method, model=None, device=None, online=False, config=None):
             return AsynClientsAvgAggregator(model=model,
                                             device=device,
                                             config=config)
+        elif config.llm.adapter.count > 1:
+            return MultiLoRAAvgAggregator(model=model,
+                                          device=device,
+                                          config=config)
         else:
             if config.aggregator.robust_rule not in STR2AGG:
                 logger.warning(

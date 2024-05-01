@@ -85,7 +85,12 @@ def get_llm(config, load_from_prev_ckpt=False, **kwargs):
     model = AdapterModel(model, use_adapter=config.llm.adapter.use, **args)
     if config.llm.adapter.use and config.llm.adapter.local_only:
         model.append_adapters(adapter_names=[
-            f'Client_{i+1}' for i in range(config.federate.client_num)
+            f'Adapter_{i+1}' for i in range(config.federate.client_num)
+        ])
+
+    if config.llm.adapter.count > 1:
+        model.append_adapters(adapter_names=[
+            f'Adapter_{i}' for i in range(config.llm.adapter.count)
         ])
 
     if load_from_prev_ckpt:

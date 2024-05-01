@@ -1,10 +1,24 @@
 import copy
 import logging
+import torch
+import random
 
 from federatedscope.core.message import Message
 from federatedscope.core.workers.client import Client
+from federatedscope.core.data import ClientData
 
 logger = logging.getLogger(__name__)
+
+
+def reorg_client_data(cdata: ClientData):
+    from torch.utils.data import random_split, ConcatDataset
+    data_length = len(cdata.train_data)
+    val_data_length = max(min(int(data_length * 0.05), 200), 1)
+    train_data_length = data_length - val_data_length
+    train_data, val_data = random_split(cdata.train_data,
+                                        [train_data_length, val_data_length])
+    test_data = ConcatDataset([cdata.val_data, cdata.test_data])
+    return ClientData(cdata.client_cfg, train_data, val_data, test_data)
 
 
 class LLMMultiLoRAClient(Client):
@@ -23,15 +37,13 @@ class LLMMultiLoRAClient(Client):
                  strategy=None,
                  *args,
                  **kwargs):
+        if config.llm.adapter.count > 1:
+            data = reorg_client_data(data)
         super(LLMMultiLoRAClient,
               self).__init__(ID, server_id, state, config, data, model, device,
                              strategy, *args, **kwargs)
 
     def callback_funcs_for_model_para(self, message: Message):
-        # Here we just activate self local LoRA
-        self.model.set_active_adapter(f'Client_{self.ID}')
-        # logger.info(self.trainer.ctx.model.get_active_adapter())
-
         round = message.state
         sender = message.sender
         timestamp = message.timestamp
@@ -67,6 +79,52 @@ class LLMMultiLoRAClient(Client):
                     f"early stopped. "
                     f"The next FL update may result in negative effect")
                 self._monitor.local_converged()
+
+            # Two mode of multilora training: Client-wise and clustering
+            if self._cfg.llm.adapter.local_only:
+                # This is client-wise
+                self.model.set_active_adapter(f'Adapter_{self.ID}')
+                adapter_idx = self.ID
+            elif self._cfg.llm.adapter.count > 1:
+                # This is clustering
+                warmup_round = self._cfg.llm.adapter.warmup.round
+                total_warmup_round = \
+                    warmup_round * self._cfg.llm.adapter.count
+                if self._cfg.llm.adapter.warmup.use and \
+                        self.state < total_warmup_round:
+                    # Initialization for all adapters
+                    adapter_idx = self.state // warmup_round
+                else:
+                    # select the adapter with min val loss
+                    with torch.no_grad():
+                        min_loss, adapter_indices = 10.0, []
+                        for i in range(self._cfg.llm.adapter.count):
+                            if len(self.data.val_data) == 0:
+                                adapter_indices.append(i)
+                                continue
+                            self.model.set_active_adapter(f'Adapter_{i}')
+                            self.model.eval()
+                            metrics = self.trainer.evaluate(
+                                target_data_split_name='val')
+                            logger.info(
+                                f'Adapter {i} with the results: {metrics}')
+                            if i == 0 or min_loss > metrics['val_avg_loss']:
+                                min_loss, adapter_indices = metrics[
+                                    'val_avg_loss'], [i]
+                            elif min_loss == metrics['val_avg_loss']:
+                                adapter_indices.append(i)
+                        logger.info(adapter_indices)
+                        adapter_idx = random.choice(adapter_indices)
+                # activate the selected adapter for further training
+                logger.info(
+                    f'Activate the adapter {adapter_idx} for training...')
+                self.model.set_active_adapter(f'Adapter_{adapter_idx}')
+                self.model.train()
+            else:
+                raise ValueError(
+                    'You should set llm.adapter.local_only to True '
+                    'or llm.adapter.count > 1')
+
             sample_size, model_para_all, results = self.trainer.train()
             if self._cfg.federate.share_local_model and not \
                     self._cfg.federate.online_aggr:
@@ -74,7 +132,7 @@ class LLMMultiLoRAClient(Client):
                 model_para_all = {
                     key: value
                     for key, value in model_para_all.items()
-                    if f'Client_{self.ID}.' in key
+                    if f'Adapter_{adapter_idx}.' in key
                 }
             train_log_res = self._monitor.format_eval_res(
                 results,

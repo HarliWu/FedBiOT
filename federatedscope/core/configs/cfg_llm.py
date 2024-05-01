@@ -55,6 +55,10 @@ def extend_llm_cfg(cfg):
     # ---------------------------------------------------------------------- #
     cfg.llm.adapter = CN()
     cfg.llm.adapter.use = False
+    cfg.llm.adapter.count = 1
+    cfg.llm.adapter.warmup = CN()
+    cfg.llm.adapter.warmup.use = False
+    cfg.llm.adapter.warmup.round = 10  # warmup round for each adapter
     cfg.llm.adapter.args = [{}]
     # Move adapter to `cpu` after training, which can save memory but cost
     # more time.

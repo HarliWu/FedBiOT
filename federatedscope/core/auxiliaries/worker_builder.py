@@ -119,7 +119,7 @@ def get_client_cls(cfg):
                 FedOT_Client
             return FedOT_Client
 
-    if cfg.llm.adapter.local_only:
+    if cfg.llm.adapter.local_only or cfg.llm.adapter.count > 1:
         from federatedscope.llm.llm_local.client import \
             LLMMultiLoRAClient
         return LLMMultiLoRAClient
@@ -239,7 +239,7 @@ def get_server_cls(cfg):
                 FedOT_Server
             return FedOT_Server
 
-    if cfg.llm.adapter.local_only:
+    if cfg.llm.adapter.local_only or cfg.llm.adapter.count > 1:
         from federatedscope.llm.llm_local.server import \
             LLMMultiLoRAServer
         return LLMMultiLoRAServer

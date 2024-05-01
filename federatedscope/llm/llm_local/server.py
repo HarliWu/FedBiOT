@@ -1,4 +1,5 @@
 import logging
+import torch
 
 from federatedscope.core.workers.server import Server
 from federatedscope.core.auxiliaries.utils import merge_param_dict
@@ -43,18 +44,55 @@ class LLMMultiLoRAServer(Server):
         for model_idx in range(self.model_num):
             model = self.models[model_idx]
             aggregator = self.aggregators[model_idx]
-            merged_adapter = dict()
+            msg_list = list()
+            # merged_adapter = dict()
+
+            # for client_id in train_msg_buffer.keys():
+            #     if self.model_num == 1:
+            #         _, model_param = train_msg_buffer[client_id]
+            #         # merged_adapter.update(model_param)
+            #         for key, value in model_param.items():
+            #             if key not in merged_adapter:
+            #                 merged_adapter[key] = [value]
+            #             else:
+            #                 merged_adapter[key].append(value)
+            #     else:
+            #         train_data_size, model_para_multiple = \
+            #             train_msg_buffer[client_id]
+            #         # merged_adapter.update(model_para_multiple[model_idx])
+            #         for key, value in model_para_multiple[model_idx].items():
+            #             if key not in merged_adapter:
+            #                 merged_adapter[key] = [value]
+            #             else:
+            #                 merged_adapter[key].append(value)
+
+            # # calculate the mean
+            # for key in merged_adapter.keys():
+            #     # logger.info(f'{key}: {len(merged_adapter[key])}')
+            #     avg_tensor = torch.zeros_like(merged_adapter[key][0])
+            #     for value in merged_adapter[key]:
+            #         avg_tensor += (value / len(merged_adapter[key]))
+            #     merged_adapter[key] = avg_tensor
+
+            # msg_list = [(1, merged_adapter)]
 
             for client_id in train_msg_buffer.keys():
                 if self.model_num == 1:
-                    _, model_param = train_msg_buffer[client_id]
-                    merged_adapter.update(model_param)
+                    msg_list.append(train_msg_buffer[client_id])
                 else:
                     train_data_size, model_para_multiple = \
                         train_msg_buffer[client_id]
-                    merged_adapter.update(model_para_multiple[model_idx])
+                    msg_list.append(
+                        (train_data_size, model_para_multiple[model_idx]))
 
-            msg_list = [(1, merged_adapter)]
+            for staled_message in self.staled_msg_buffer:
+                state, client_id, content = staled_message
+                if self.model_num == 1:
+                    msg_list.append(content)
+                else:
+                    train_data_size, model_para_multiple = content
+                    msg_list.append(
+                        (train_data_size, model_para_multiple[model_idx]))
 
             # Trigger the monitor here (for training)
             self._monitor.calc_model_metric(self.models[0].state_dict(),
