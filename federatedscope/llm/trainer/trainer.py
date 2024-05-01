@@ -43,8 +43,10 @@ class LLMTrainer(GeneralTorchTrainer):
                  config,
                  only_for_eval=False,
                  monitor=None):
-        self.grad_accum_step = max(config.llm.grad_accum_step,
-                                   config.grad.grad_accum_count)
+        num_train_batch = len(data['train'])
+        self.grad_accum_step = min(
+            num_train_batch,
+            max(config.llm.grad_accum_step, config.grad.grad_accum_count))
 
         if config.llm.accelerator.use:
             self.accelerator = Accelerator(
