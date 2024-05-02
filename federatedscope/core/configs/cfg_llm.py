@@ -17,7 +17,25 @@ def extend_llm_cfg(cfg):
 
     # Training the reward model
     cfg.llm.reward_coeff = 0.1
+
+    # ---------------------------------------------------------------------- #
+    # RLHF for LLM
+    # ---------------------------------------------------------------------- #
     cfg.llm.rlhf = False
+
+    # Enable alternative training (reward -> policy -> reward -> ...)
+    cfg.llm.fedrlhf = CN()
+    cfg.llm.fedrlhf.use = False
+    cfg.llm.fedrlhf.config_file = ''
+    cfg.llm.fedrlhf.pretrained = False
+    cfg.llm.fedrlhf.frequency = 100
+    cfg.llm.fedrlhf.train = CN()
+    cfg.llm.fedrlhf.train.local_update_steps = 10
+    cfg.llm.fedrlhf.train.batch_or_epoch = 'batch'
+
+    # use gradient accumulation to enlarge the batch size
+    # e.g., bsz = dataloader.batch_size * train.grad_accu_step
+    cfg.llm.grad_accum_step = 1
 
     # use gradient accumulation to enlarge the batch size
     # e.g., bsz = dataloader.batch_size * train.grad_accu_step

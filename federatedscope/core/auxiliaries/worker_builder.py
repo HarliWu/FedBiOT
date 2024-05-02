@@ -244,4 +244,8 @@ def get_server_cls(cfg):
             LLMMultiLoRAServer
         return LLMMultiLoRAServer
 
+    if cfg.llm.fedrlhf.use:
+        from federatedscope.llm.rlhf.fedserver import RewardServer
+        return RewardServer
+
     return server_class
