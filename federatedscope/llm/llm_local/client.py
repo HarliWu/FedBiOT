@@ -43,6 +43,15 @@ class LLMMultiLoRAClient(Client):
               self).__init__(ID, server_id, state, config, data, model, device,
                              strategy, *args, **kwargs)
 
+    def _register_default_handlers(self):
+        super()._register_default_handlers()
+        self.register_handlers('adapter_eval',
+                               self.callback_funcs_for_adapter_eval,
+                               ['grouping'])
+        self.register_handlers('set_active_adapter_idx',
+                               self.callback_funcs_for_setting_adapter_idx,
+                               [None])
+
     def callback_funcs_for_model_para(self, message: Message):
         round = message.state
         sender = message.sender
@@ -94,6 +103,8 @@ class LLMMultiLoRAClient(Client):
                         self.state < total_warmup_round:
                     # Initialization for all adapters
                     adapter_idx = self.state // warmup_round
+                elif self._cfg.llm.adapter.grouping.use:
+                    adapter_idx = self.adapter_idx
                 else:
                     # select the adapter with min val loss
                     with torch.no_grad():
@@ -126,6 +137,7 @@ class LLMMultiLoRAClient(Client):
                     'or llm.adapter.count > 1')
 
             sample_size, model_para_all, results = self.trainer.train()
+            train_data_size = len(self.data.train_data)
             if self._cfg.federate.share_local_model and not \
                     self._cfg.federate.online_aggr:
                 model_para_all = copy.deepcopy(model_para_all)
@@ -152,3 +164,35 @@ class LLMMultiLoRAClient(Client):
                     timestamp=self._gen_timestamp(init_timestamp=timestamp,
                                                   instance_number=sample_size),
                     content=(sample_size, model_para_all)))
+
+    def callback_funcs_for_adapter_eval(self, message: Message):
+        sender, timestamp = message.sender, message.timestamp
+        self.state = message.state
+        if message.content is not None:
+            self.trainer.update(message.content,
+                                strict=self._cfg.federate.share_local_model)
+
+        metrics = {}
+        with torch.no_grad():
+            for i in range(self._cfg.llm.adapter.count):
+                if len(self.data.val_data) == 0:
+                    metrics[f'adapter_{i}_avg_loss'] = random.random()
+                    continue
+                self.model.set_active_adapter(f'Adapter_{i}')
+                self.model.eval()
+                adap_metrics = self.trainer.evaluate(
+                    target_data_split_name='val')
+                logger.info(f'Client {self.ID} Adapter {i} with '
+                            f'the results: {adap_metrics}')
+                metrics[f'adapter_{i}_avg_loss'] = adap_metrics['val_avg_loss']
+
+        self.comm_manager.send(
+            Message(msg_type='grouping',
+                    sender=self.ID,
+                    receiver=[sender],
+                    state=self.state,
+                    timestamp=timestamp,
+                    content=metrics))
+
+    def callback_funcs_for_setting_adapter_idx(self, message: Message):
+        self.adapter_idx = message.content

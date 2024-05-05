@@ -85,6 +85,11 @@ def extend_llm_cfg(cfg):
     # Each client trains their own local model for different adapters
     cfg.llm.adapter.local_only = False
 
+    # Cluster-wise method to ensure every adapter carries the number of clients
+    cfg.llm.adapter.grouping = CN()
+    cfg.llm.adapter.grouping.use = False
+    cfg.llm.adapter.grouping.round = 50
+
     # ---------------------------------------------------------------------- #
     # Offsite-tuning related options
     # ---------------------------------------------------------------------- #
