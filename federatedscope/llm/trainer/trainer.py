@@ -323,6 +323,11 @@ class LLMTrainer(GeneralTorchTrainer):
                     if p.grad is not None:
                         p.grad.data = p.grad.to('cpu')
 
+        if hasattr(ctx, 'optimizer') and ctx.optimizer is not None:
+            del ctx.optimizer
+        if hasattr(ctx, 'scheduler') and ctx.scheduler is not None:
+            del ctx.scheduler
+
         # free the space
         gc.collect()
         torch.cuda.empty_cache()
