@@ -192,7 +192,7 @@ class LLMMultiLoRAServer(Server):
         senders = [sender for sender in cur_buffer.keys()]
         random.shuffle(senders)
         unassigned_client_num = len(senders)
-        while len(senders) > 0:
+        while unassigned_client_num > 0:
             num_finished = len(self.adapter_grouping)
             max_size = math.ceil(unassigned_client_num /
                                  (num_adap - num_finished))
