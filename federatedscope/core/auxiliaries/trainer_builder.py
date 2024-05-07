@@ -32,6 +32,7 @@ TRAINER_CLASS_DICT = {
     "llmtrainer": "LLMTrainer",
     "llmrewardtrainer": "RewardTrainer",
     "llmrewardchoicetrainer": "RewardChoiceTrainer",
+    "llmpporewardtrainer": "PPORewardTrainer",
 }
 
 
@@ -166,6 +167,8 @@ def get_trainer(model=None,
             dict_path = "federatedscope.llm.trainer.reward_trainer"
         elif config.trainer.type.lower() in ['llmrewardchoicetrainer']:
             dict_path = "federatedscope.llm.trainer.reward_choice_trainer"
+        elif config.trainer.type.lower() in ['llmpporewardtrainer']:
+            dict_path = "federatedscope.llm.trainer.PPO_reward_trainer"
         else:
             raise ValueError
 
