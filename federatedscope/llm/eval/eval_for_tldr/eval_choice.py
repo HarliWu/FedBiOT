@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 import os
 from transformers import GenerationConfig
 from tqdm import tqdm
+import numpy as np
 
 from federatedscope.core.configs.config import global_cfg
 from federatedscope.core.cmd_args import parse_args, parse_client_cfg
@@ -34,6 +35,38 @@ def cal_acc(logits, labels, choices):
     _, predicted = new_logits.max(1)
 
     return new_labels, predicted, predicted.eq(new_labels).sum().item()
+
+
+def evaluation(model, dataloader, choices):
+    test_batches = tqdm(dataloader)
+    correct, total = 0, 0
+    expected_choice, actual_choice = [], []
+    for data_batch in test_batches:
+        input_ids = data_batch["input_ids"].to('cuda:0')
+        labels = data_batch["labels"].to('cuda:0')
+        attention_mask = data_batch["attention_mask"].to('cuda:0')
+
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+
+        # calculate the correctness
+        new_labels, predicted, batch_correct = \
+            cal_acc(outputs.logits, labels, choices)
+
+        # collect the expected and actual results
+        expected_choice += new_labels.tolist()
+        actual_choice += predicted.tolist()
+
+        # Display the final result on screen
+        total = total + new_labels.size(0)
+        correct = correct + batch_correct
+
+        test_batches.set_postfix({
+            'correct': correct,
+            'total': total,
+            'rate': '{:.2f}%'.format(correct / total * 100)
+        })
+
+    return expected_choice, actual_choice, correct, total
 
 
 @torch.no_grad()
@@ -85,36 +118,68 @@ def main():
     for choice in init_cfg.trainer.choices:
         choices.append(tokenizer(f'{choice}')['input_ids'][-1])
 
-    correct, total = 0, 0
-
     # Print result to a text file
     results_display = open(os.path.join(init_cfg.outdir, 'test_results.txt'),
                            'w')
-    eval_size = 10
-    correct, total = 0, 0
     dataloader = DataLoader(dataset=test_dataset,
                             batch_size=10,
                             shuffle=False,
                             collate_fn=LLMDataCollator(tokenizer=tokenizer))
 
-    test_batches = tqdm(dataloader)
-    for data_batch in test_batches:
+    expected_choice, actual_choices = [], []
+    if init_cfg.llm.adapter.local_only:
+        for i in range(init_cfg.federate.client_num):
+            model.set_active_adapter(f'Adapter_{i+1}')
+            model.eval()
+            expected_choice, actual_choice, correct, total = \
+                evaluation(model, dataloader, choices)
+            acc = correct / total * 100
+            results_display.write(
+                f'Client {i+1} (Adapter_{i+1}): \n'
+                f'Correct: {correct}; Total: {total}; Accuracy: {acc}%\n\n')
+            actual_choices.append(actual_choice)
+    elif init_cfg.llm.adapter.count > 1:
+        for i in range(init_cfg.llm.adapter.count):
+            model.set_active_adapter(f'Adapter_{i}')
+            model.eval()
+            expected_choice, actual_choice, correct, total = \
+                evaluation(model, dataloader, choices)
+            acc = correct / total * 100
+            results_display.write(
+                f'Adapter_{i}: \n'
+                f'Correct: {correct}; Total: {total}; Accuracy: {acc}%\n\n')
+            actual_choices.append(actual_choice)
+    else:
+        model.eval()
+        expected_choice, actual_choice, correct, total = \
+            evaluation(model, dataloader, choices)
+        actual_choices.append(actual_choice)
+
+    # Choose the indices with the most votes / or the actual choice
+    array = np.array(actual_choices).T
+    actual_choice = [np.bincount(array[i]).argmax() for i in range(len(array))]
+
+    # Display the overall results
+    indicator = (np.array(expected_choice) == np.array(actual_choice))
+    correct, total = np.sum(indicator), len(indicator)
+    acc = correct / total * 100
+    results_display.write(
+        f'Overall: \n'
+        f'Correct: {correct}; Total: {total}; Accuracy: {acc}%\n\n'
+        '==========================\n\n')
+
+    # Print some samples
+    for batch_idx, data_batch in enumerate(dataloader):
         input_ids = data_batch["input_ids"].to('cuda:0')
-        labels = data_batch["labels"].to('cuda:0')
-        attention_mask = data_batch["attention_mask"].to('cuda:0')
 
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-
-        # calculate the correctness
-        new_labels, predicted, batch_correct = \
-            cal_acc(outputs.logits, labels, choices)
+        idx = batch_idx * input_ids.size(0)
 
         # extract the first result
         first_input = tokenizer.decode(
             input_ids[0][input_ids[0] != tokenizer.pad_token_id],
             skip_special_tokens=True)
-        first_expected_choice = chr(new_labels[0] + ord('A'))
-        first_actual_choice = chr(predicted[0] + ord('A'))
+        first_expected_choice = chr(expected_choice[idx] + ord('A'))
+        first_actual_choice = chr(actual_choice[idx] + ord('A'))
 
         # format the input
         sample = {
@@ -137,18 +202,6 @@ def main():
         results_display.write('==========================\n\n')
         results_display.flush()
 
-        # Display the final result on screen
-        total = total + new_labels.size(0)
-        correct = correct + batch_correct
-
-        test_batches.set_postfix({
-            'correct': correct,
-            'total': total,
-            'rate': '{:.2f}%'.format(correct / total * 100)
-        })
-
-    results_display.write(f'Correct rates: {correct/total*100}% '
-                          f'({correct}/{total})')
     results_display.close()
 
 

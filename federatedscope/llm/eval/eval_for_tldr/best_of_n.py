@@ -191,6 +191,7 @@ def best_of_n(model, dataset, tokenizer, n=16, output_dir=None):
     return last_better_idx
 
 
+@torch.no_grad()
 def best_of_n_local(model,
                     dataset,
                     tokenizer,
@@ -218,6 +219,75 @@ def best_of_n_local(model,
     ]
 
     return clients_best_idx, majority_votes_idx
+
+
+@torch.no_grad()
+def best_of_n_multilora(model, dataset, tokenizer, n=16):
+    prompt = TLDR_PROMPT_DICT["summary_cmp"]
+
+    choices = [tokenizer(f'{c}')['input_ids'][-1] for c in ['A', 'B']]
+    # Correct idx is 0 means no changed, 1 means changed to the new index
+    last_better_idx = np.array([0] * len(dataset))
+    for i in range(1, n):
+        logger.info(f'===== This is {i}-th evaluation =====')
+        eval_dataset = []
+
+        for better_idx, sample in zip(last_better_idx, dataset):
+            sample['output_A'] = sample['summaries'][better_idx]
+            if sample['output_A'].startswith(" ") is False:
+                sample['output_A'] = " " + sample['output_A']
+            sample['output_B'] = sample['summaries'][i]
+            if sample['output_B'].startswith(" ") is False:
+                sample['output_B'] = " " + sample['output_B']
+            sample['choice'] = random.choice([" A", " B"])
+            eval_dataset.append({
+                'subreddit': sample['subreddit'],
+                'title': sample['title'],
+                'post': sample['post'],
+                'output_A': sample['output_B'],
+                'output_B': sample['output_A'],
+                'choice': sample['choice']
+            })
+
+        test_dataset = LLMDataset(eval_dataset,
+                                  tokenizer,
+                                  prompt_input=prompt,
+                                  prompt_no_input=prompt,
+                                  output_tag='choice')
+        dataloader = DataLoader(
+            dataset=test_dataset,
+            batch_size=n,
+            shuffle=False,
+            collate_fn=LLMDataCollator(tokenizer=tokenizer))
+
+        predicted_indices = []
+
+        for idx, data_batch in enumerate(tqdm(dataloader)):
+            input_ids = data_batch["input_ids"].to('cuda:0')
+            labels = data_batch["labels"].to('cuda:0')
+            attention_mask = data_batch["attention_mask"].to('cuda:0')
+            collective_choices = []
+            for name in model.adapter_names:
+                if name == 'default':
+                    continue
+                model.set_active_adapter(name)
+                model.eval()
+                outputs = model(input_ids=input_ids,
+                                attention_mask=attention_mask)
+                _, new_logits, predicted, _ = cal_acc(outputs.logits, labels,
+                                                      choices)
+                collective_choices.append(predicted.tolist())
+            # finalize the output chosen by most adapters
+            array = np.array(collective_choices).T
+            predicted_indices += [
+                np.bincount(array[i]).argmax() for i in range(len(array))
+            ]
+
+        predicted_indices = np.array(predicted_indices)
+        last_better_idx[predicted_indices == 0] = i
+
+    # print the final results
+    return last_better_idx
 
 
 def print_results(results_display, dataset, bsn_results):
@@ -270,7 +340,7 @@ def main():
 
     # best_of_n dataset
     dataset = best_of_n_dataset(init_cfg, gen_cfg, n=16)
-    dataset = dataset[:500]
+    # dataset = dataset[:500]
 
     # get model and tokenizer
     model_name, _ = init_cfg.model.type.split('@')
@@ -303,6 +373,8 @@ def main():
                             num_clients=init_cfg.federate.client_num,
                             output_dir=init_cfg.outdir,
                             print_client_result=True)
+    elif init_cfg.llm.adapter.count > 1:
+        results = best_of_n_multilora(model, dataset, tokenizer, n=16)
     else:
         results = best_of_n(model,
                             dataset,
