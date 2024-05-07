@@ -52,6 +52,8 @@ def extend_model_cfg(cfg):
     # Restore model from local pretrained (only for LLM)
     cfg.model.load_from_local_pretrained_fs_config = ''
     cfg.model.load_from_local_pretrained_model_path = ''
+    cfg.model.llm_type = 'CausalLM'
+    cfg.model.llm_kwargs = [{}]
 
     # ---------------------------------------------------------------------- #
     # Criterion related options

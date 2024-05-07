@@ -18,7 +18,14 @@ def get_model_from_huggingface(model_name, config, **kwargs):
     if config.train.is_enable_half:
         kwargs['torch_dtype'] = torch.bfloat16
 
-    return AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
+    if config.model.llm_type == 'SequenceClassification':
+        from transformers import AutoModelForSequenceClassification
+        if len(config.model.llm_kwargs) > 0:
+            kwargs.update(config.model.llm_kwargs[0])
+        return AutoModelForSequenceClassification.from_pretrained(
+            model_name, **kwargs)
+    else:
+        return AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
 
 
 def get_model_from_modelscope(model_name, config, **kwargs):
