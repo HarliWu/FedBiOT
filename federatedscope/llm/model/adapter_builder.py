@@ -9,10 +9,11 @@ from accelerate import dispatch_model, infer_auto_device_map, \
 from accelerate.utils import get_balanced_memory
 
 from transformers import (OPTForCausalLM, GPT2LMHeadModel, BloomForCausalLM,
-                          LlamaForCausalLM)
+                          LlamaForCausalLM, LlamaForSequenceClassification)
 
 MODEL_UNIT = {
     LlamaForCausalLM: ['LlamaDecoderLayer'],
+    LlamaForSequenceClassification: ['LlamaDecoderLayer'],
     BloomForCausalLM: ['BloomBlock'],
     GPT2LMHeadModel: ['GPT2Block'],
     OPTForCausalLM: ['OPTDecoderLayer']
