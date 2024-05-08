@@ -453,7 +453,9 @@ def load_llm_dataset(config=None, **kwargs):
         from federatedscope.llm.dataloader.reddit_tldr import \
             load_comparison_dataset
         data_root = os.path.join(config.data.root, 'reddit-tldr-comparison')
-        dataset = load_comparison_dataset(data_root, tokenizer)
+        dataset = load_comparison_dataset(data_root,
+                                          tokenizer,
+                                          max_num_test=1000)
 
     elif dataset_name.lower() == 'reddit-tldr-comparison-choice':
         from federatedscope.llm.dataloader.reddit_tldr import \

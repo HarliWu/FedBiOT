@@ -64,6 +64,18 @@ def _download_tldr_cmpr(data_root):
         elif data_dict['split'] == 'valid2':
             list_test_dict.append(data_dict)
 
+    # # merge the worker with less than 10 samples
+    # dict_cat = {}
+    # for idx, sample in enumerate(list_train_dict):
+    #     if sample['category'] not in dict_cat:
+    #         dict_cat[sample['category']] = [idx]
+    #     else:
+    #         dict_cat[sample['category']].append(idx)
+    # for values in dict_cat.values():
+    #     if len(values) < 50:
+    #         for idx in values:
+    #             list_train_dict[idx]['category'] = 'merged_client'
+
     return list_train_dict, list_val_dict, list_test_dict
 
 
@@ -223,7 +235,7 @@ def load_human_finetuning_dataset(data_root,
     return dataset
 
 
-def load_comparison_dataset(data_root, tokenizer):
+def load_comparison_dataset(data_root, tokenizer, max_num_test=-1):
     if os.path.exists(os.path.join(data_root, 'train.pickle')) and \
         os.path.exists(os.path.join(data_root, 'val.pickle')) and \
             os.path.exists(os.path.join(data_root, 'test.pickle')):
@@ -271,6 +283,17 @@ def load_comparison_dataset(data_root, tokenizer):
             pickle.dump(train_dataset, f_train)
             pickle.dump(val_dataset, f_val)
             pickle.dump(test_dataset, f_test)
+
+    # shrink val and test dataset
+    if max_num_test > 0:
+        val_dataset.win_dataset.input_ids = \
+            val_dataset.win_dataset.input_ids[:max_num_test]
+        val_dataset.lose_dataset.input_ids = \
+            val_dataset.lose_dataset.input_ids[:max_num_test]
+        test_dataset.win_dataset.input_ids = \
+            test_dataset.win_dataset.input_ids[:max_num_test]
+        test_dataset.lose_dataset.input_ids = \
+            test_dataset.lose_dataset.input_ids[:max_num_test]
 
     dataset = (train_dataset, val_dataset, test_dataset)
 

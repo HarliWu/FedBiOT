@@ -102,6 +102,8 @@ class PPORewardTrainer(LLMTrainer):
         else:
             ctx.skip_this_batch = CtxVar(False, LIFECYCLE.BATCH)
 
+        win_rewards = win_rewards.view(-1)
+        lose_rewards = lose_rewards.view(-1)
         ctx.y_true = CtxVar(torch.zeros(len(win_input_ids)), LIFECYCLE.BATCH)
         ctx.y_pred = CtxVar(
             torch.where(win_rewards.cpu() > lose_rewards.cpu(),
