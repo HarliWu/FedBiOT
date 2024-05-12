@@ -192,6 +192,46 @@ def best_of_n(model, dataset, tokenizer, n=16, output_dir=None):
 
 
 @torch.no_grad()
+def best_of_n_by_reward(model, dataset, tokenizer, n=16):
+    prompt = TLDR_PROMPT_DICT["summary"]
+
+    best_idx = np.array([0] * len(dataset))
+    eval_dataset, eval_rating = [], []
+
+    # Load the dataset
+    for idx, sample in enumerate(tqdm(dataset)):
+        for i in range(n):
+            eval_dataset.append({
+                'subreddit': sample['subreddit'],
+                'title': sample['title'],
+                'post': sample['post'],
+                'summary': sample['summaries'][i]
+            })
+
+    test_dataset = LLMDataset(eval_dataset,
+                              tokenizer,
+                              prompt_input=prompt,
+                              prompt_no_input=prompt,
+                              output_tag='summary')
+    dataloader = DataLoader(dataset=test_dataset,
+                            batch_size=n,
+                            shuffle=False,
+                            collate_fn=LLMDataCollator(tokenizer=tokenizer))
+
+    for data_batch in tqdm(dataloader):
+        input_ids = data_batch["input_ids"].to('cuda:0')
+        attention_mask = data_batch["attention_mask"].to('cuda:0')
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+        eval_rating += outputs.logits.tolist()
+
+    eval_rating = np.array(eval_rating).reshape((-1, n))
+    best_idx = np.argmax(eval_rating, axis=1)
+    print(best_idx)
+
+    return best_idx
+
+
+@torch.no_grad()
 def best_of_n_local(model,
                     dataset,
                     tokenizer,
@@ -374,7 +414,16 @@ def main():
                             output_dir=init_cfg.outdir,
                             print_client_result=True)
     elif init_cfg.llm.adapter.count > 1:
+        for i in range(init_cfg.llm.adapter.count):
+            model.set_active_adapter(f"Adapter_{i}")
+            model.eval()
+            adapter_result = best_of_n(model, dataset, tokenizer, n=16)
+            path = os.path.join(init_cfg.outdir,
+                                f'test_results_adapter_{i}.txt')
+            print_results(open(path, 'w'), dataset, adapter_result)
         results = best_of_n_multilora(model, dataset, tokenizer, n=16)
+    elif init_cfg.trainer.type == "llmpporewardtrainer":
+        results = best_of_n_by_reward(model, dataset, tokenizer, n=16)
     else:
         results = best_of_n(model,
                             dataset,
