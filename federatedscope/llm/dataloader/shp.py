@@ -19,7 +19,7 @@ SHP_PROMPT_DICT = {
                 "State your choice with a single capital letter, "
                 "i.e., \"A\" if RESPONSE A is better, "
                 "\"B\" if RESPONSE B is better.\n\n"
-                "### QUERY: {instruction}"
+                "### QUERY: {instruction}\n"
                 "### RESPONSE A: {output_A}\n"
                 "### RESPONSE B: {output_B}\n"
                 "### YOUR CHOICE:")
