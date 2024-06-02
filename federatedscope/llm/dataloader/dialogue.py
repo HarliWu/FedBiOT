@@ -13,7 +13,8 @@ from federatedscope.llm.dataset.llm_dataset import (
 
 # <<SYS>>
 # You're are a helpful Assistant, and you only response to the "Assistant"
-# Remember, maintain a natural tone. Be precise, concise, and casual. Keep it short\n
+# Remember, maintain a natural tone. Be precise, concise, and casual.
+# Keep it short\n
 # <</SYS>>
 # {conversation_history}\n\n
 # [INST]

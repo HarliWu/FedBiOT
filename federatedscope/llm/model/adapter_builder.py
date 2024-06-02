@@ -294,7 +294,7 @@ class AdapterModel(nn.Module):
                 layers, nn.ModuleList):
             self.layers._modules = layers._modules
 
-        elif type(layers) == list and type(self.layers) == list:
+        elif isinstance(layers, list) and isinstance(self.layers, list):
             # This consists of multiple ModuleLists
             assert len(self.layers) == len(layers)
             for src, tgt in zip(self.layers, layers):
@@ -325,7 +325,7 @@ class AdapterModel(nn.Module):
             # Make it to the list
             trainable_modules = [modules]
 
-        elif type(modules) == list:
+        elif isinstance(modules, list):
             trainable_modules = modules
 
         else:
