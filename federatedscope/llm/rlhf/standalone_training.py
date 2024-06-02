@@ -69,6 +69,17 @@ def get_rlhf_dataset(config):
         generation_prompt = TLDR_PROMPT_DICT["summary"]
         selector_prompt = TLDR_PROMPT_DICT["summary_cmp"]
 
+    elif dataset_name.lower() == "shp-rlhf":
+        from federatedscope.llm.dataloader.shp import \
+            load_rlhf_dataset, SHP_PROMPT_DICT
+
+        data_root = os.path.join(config.data.root, 'shp')
+        list_train_dict, _, _ = load_rlhf_dataset(data_root,
+                                                  tokenizer=None,
+                                                  max_num_test=1000)
+        generation_prompt = SHP_PROMPT_DICT["shp"]
+        selector_prompt = SHP_PROMPT_DICT["shp_cmp"]
+
     return data_root, list_train_dict, generation_prompt, selector_prompt
 
 
@@ -120,11 +131,12 @@ class RLHF_finetuning:
                 num_comp = self.config.llm.num_completions
                 gen_fp = os.path.join(self.data_root,
                                       f"generated_rlhf_data_{num_comp}.json")
+
             if os.path.exists(gen_fp):
+                # load the file with generated responses
                 list_train_dict = json.load(open(gen_fp, "r"))
                 logger.info("Successfully loaded the generated text "
                             f"from {gen_fp}")
-
             else:
                 # generate the output
                 logger.info("The generated text file does not exist. "
@@ -135,7 +147,7 @@ class RLHF_finetuning:
                     self.tokenizer,
                     self.generation_prompt,
                     max_new_tokens=self.config.llm.max_new_token,
-                )
+                    num_completions=self.config.llm.num_completions)
 
                 # save the data to a file
                 json.dump(list_train_dict, open(gen_fp, "w"))
