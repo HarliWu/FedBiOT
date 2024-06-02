@@ -5,6 +5,8 @@ import json
 from tqdm import tqdm
 import numpy as np
 import gc
+import copy
+from itertools import combinations
 
 import torch
 from torch.utils.data import DataLoader
@@ -74,7 +76,6 @@ class RLHF_finetuning:
     """
     Implementation of RLHF server
     """
-
     def __init__(
         self,
         model,
@@ -112,7 +113,13 @@ class RLHF_finetuning:
 
         else:
             # This file save the generated texts of original model
-            gen_fp = os.path.join(self.data_root, f"generated_rlhf_data.json")
+            if self.config.llm.num_completions <= 2:
+                gen_fp = os.path.join(self.data_root,
+                                      "generated_rlhf_data.json")
+            else:
+                num_comp = self.config.llm.num_completions
+                gen_fp = os.path.join(self.data_root,
+                                      f"generated_rlhf_data_{num_comp}.json")
             if os.path.exists(gen_fp):
                 list_train_dict = json.load(open(gen_fp, "r"))
                 logger.info("Successfully loaded the generated text "
@@ -177,7 +184,7 @@ class RLHF_finetuning:
 
         # start training
         for r in range(self.config.federate.total_round_num):
-            logger.info(f"----------- Starting a new RLHF training round "
+            logger.info("----------- Starting a new RLHF training round "
                         f"(Round #{r}) -------------")
             sample_size, model_para_all, results = self.trainer.train()
             train_log_res = self._monitor.format_eval_res(results,
@@ -200,15 +207,17 @@ class RLHF_finetuning:
                                 model,
                                 tokenizer,
                                 prompt,
-                                max_new_tokens=60):
+                                max_new_tokens=60,
+                                num_completions=2):
         generate_kwargs = dict(
             top_p=1.0,
             temperature=1.0,
             do_sample=True,
             max_new_tokens=max_new_tokens,
-            num_return_sequences=2,
+            num_return_sequences=max(2, num_completions),
         )
 
+        new_list_data_dict = []
         for data in tqdm(list_data_dict):
             input_text = prompt.format_map(data)
             input_text_tokens = tokenizer(
@@ -235,10 +244,13 @@ class RLHF_finetuning:
                 if response[-1].startswith(" ") is False:
                     response[-1] = " " + response[-1]
 
-            data["output_A"] = response[0]
-            data["output_B"] = response[1]
+            for output_A, output_B in combinations(response, 2):
+                new_data = copy.deepcopy(data)
+                new_data["output_A"] = output_A
+                new_data["output_B"] = output_B
+                new_list_data_dict.append(new_data)
 
-        return list_data_dict
+        return new_list_data_dict
 
     @torch.no_grad()
     def _choose_better_response(self, list_data_dict, model, tokenizer,
@@ -296,25 +308,6 @@ class RLHF_finetuning:
                     np.bincount(array[i]).argmax().item()
                     for i in range(len(array))
                 ]
-
-            # for name in model.adapter_names:
-            #     if name == 'default':
-            #         continue
-            #     model.set_active_adapter(name)
-            #     model.eval()
-            #     adapter_predicted_indices = []
-            #     for idx, data_batch in enumerate(tqdm(dataloader)):
-            #         input_ids = data_batch["input_ids"].to('cuda:0')
-            #         labels = data_batch["labels"].to('cuda:0')
-            #         attention_mask = data_batch["attention_mask"].to('cuda:0')
-            #         outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-            #         _, _, predicted, _ = cal_acc(outputs.logits, labels, choices)
-            #         adapter_predicted_indices += predicted.tolist()
-            #     collective_predicted_indices.append(adapter_predicted_indices)
-            # # Choose the indices with the most votes
-            # array = np.array(collective_predicted_indices).T
-            # predicted_indices = [
-            #     np.bincount(array[i]).argmax() for i in range(len(array))]
 
         for choice, sample in zip(predicted_indices, list_data_dict):
             sample["choice"] = choice

@@ -13,6 +13,7 @@ def extend_llm_cfg(cfg):
     cfg.llm = CN(new_allowed=True)
     cfg.llm.tok_len = 128
     cfg.llm.max_new_token = 60
+    cfg.llm.num_completions = 2
     cfg.llm.retry_on_nan_loss = False
 
     # Training the reward model
