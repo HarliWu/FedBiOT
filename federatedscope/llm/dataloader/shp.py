@@ -13,7 +13,8 @@ from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
 SHP_PROMPT_DICT = {
     "shp": ("Below is an instruction that describes a task. "
             "Write a response that appropriately completes the request.\n\n"
-            "### Instruction:\n{instruction}\n\n### Response:"),
+            "### Instruction:\n{instruction}\n\n"
+            "### Response:"),
     "shp_cmp": ("Below is a query followed by two responses. Pick a "
                 "helpful response that is precise, concise, and casual. "
                 "State your choice with a single capital letter, "
@@ -135,7 +136,10 @@ def load_rlhf_dataset(data_root,
         return list_train_dict, list_val_dict, list_test_dict
 
 
-def load_shp_cmp_dataset(data_root, tokenizer, config, max_num_test=-1):
+def load_shp_cmp_dataset_by_choice(data_root,
+                                   tokenizer,
+                                   config,
+                                   max_num_test=-1):
     num_clients = config.federate.client_num
     train_fp, val_fp, test_fp = [
         os.path.join(data_root, f'train_choice_{num_clients}.pickle'),
