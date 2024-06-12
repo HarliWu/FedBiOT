@@ -272,6 +272,7 @@ class RLHF_finetuning:
                 new_data["output_A"] = output_A
                 new_data["output_B"] = output_B
                 new_list_data_dict.append(new_data)
+                break
 
         return new_list_data_dict, list_data_dict  # remove this
         return new_list_data_dict
