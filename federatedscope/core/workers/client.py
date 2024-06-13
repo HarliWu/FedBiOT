@@ -234,6 +234,10 @@ class Client(BaseClient):
         """
         while True:
             msg = self.comm_manager.receive()
+            logger.info(
+                f'Client #{self.ID}: {msg.msg_type} (from {msg.sender})')
+            logger.info(
+                f'Client #{self.ID}: {msg.state} (current {self.state})')
             if self.state <= msg.state:
                 self.msg_handlers[msg.msg_type](msg)
 
