@@ -157,6 +157,7 @@ class LLMMultiLoRAServer(Server):
     def trigger_for_start(self):
         # start feature engineering (This part is for hard code)
         if self.check_client_join_in():
+            logger.info('Waited all clients join, start now...')
             self.trigger_for_feat_engr(self.broadcast_model_para, {
                 'msg_type': 'adapter_eval',
                 'filter_unseen_clients': False,
