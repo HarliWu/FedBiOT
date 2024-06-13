@@ -266,7 +266,6 @@ class Server(BaseServer):
         # Begin: Broadcast model parameters and start to FL train
         while self.join_in_client_num < self.client_num:
             msg = self.comm_manager.receive()
-            logger.info(f'Server: {msg.msg_type} (from {msg.sender})')
             self.msg_handlers[msg.msg_type](msg)
 
         # Running: listen for message (updates from clients),
@@ -1085,8 +1084,7 @@ class Server(BaseServer):
                             timestamp=self.cur_timestamp,
                             content=self._cfg.federate.join_in_info.copy()))
 
-        # self.trigger_for_start()
-        self._start_new_training_round()
+        self.trigger_for_start()
 
     def callback_funcs_for_metrics(self, message: Message):
         """

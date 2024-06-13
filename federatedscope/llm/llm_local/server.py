@@ -154,17 +154,18 @@ class LLMMultiLoRAServer(Server):
 
         return aggregated_num
 
-    # def trigger_for_start(self):
-    #     # start feature engineering (This part is for hard code)
-    #     self.trigger_for_feat_engr(self.broadcast_model_para, {
-    #         'msg_type': 'adapter_eval',
-    #         'filter_unseen_clients': False,
-    #     })
+    def trigger_for_start(self):
+        # start feature engineering (This part is for hard code)
+        if self.check_client_join_in():
+            self.trigger_for_feat_engr(self.broadcast_model_para, {
+                'msg_type': 'adapter_eval',
+                'filter_unseen_clients': False,
+            })
 
-    #     logger.info(
-    #         '--------- Starting training (Round #{:d}) -----------'.format(
-    #             self.state))
-    #     logger.info('Server: Performing a grouping step...')
+            logger.info(
+                '----------- Starting training (Round #{:d}) -------------'.
+                format(self.state))
+            logger.info('Server: Performing a grouping step...')
 
     def callback_funcs_for_grouping(self, message: Message):
         rnd = message.state
