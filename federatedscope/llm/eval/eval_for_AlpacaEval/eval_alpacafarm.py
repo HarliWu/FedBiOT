@@ -195,7 +195,7 @@ def eval_for_agreement(init_cfg, label, prompt=PROMPT_CMP):
     results_display = open(
         os.path.join(init_cfg.outdir, f'{label}_test_results.txt'), 'w')
     dataloader = DataLoader(dataset=test_dataset,
-                            batch_size=1,
+                            batch_size=10,
                             shuffle=False,
                             collate_fn=LLMDataCollator(tokenizer=tokenizer))
 
