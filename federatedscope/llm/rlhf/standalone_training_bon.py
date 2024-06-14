@@ -247,9 +247,12 @@ class RLHF_finetuning:
             input_ids = input_text_tokens.input_ids.to("cuda:0")
             attention_mask = input_text_tokens.attention_mask.to("cuda:0")
 
-            output_ids = model.generate(input_ids=input_ids,
-                                        attention_mask=attention_mask,
-                                        **generate_kwargs)
+            try:
+                output_ids = model.generate(input_ids=input_ids,
+                                            attention_mask=attention_mask,
+                                            **generate_kwargs)
+            except:
+                continue
 
             response = []
             for i in range(output_ids.shape[0]):
