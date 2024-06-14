@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 
 import datasets
 import json
-import tqdm
+from tqdm import tqdm
 import os
 import numpy as np
 
