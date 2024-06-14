@@ -75,6 +75,7 @@ def evaluation(model, dataloader, choices):
         total = total + new_labels.size(0)
         correct = correct + batch_correct
 
+        print(correct, total, new_labels)
         test_batches.set_postfix({
             'correct': correct,
             'total': total,
