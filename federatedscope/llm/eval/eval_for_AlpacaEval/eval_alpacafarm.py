@@ -33,7 +33,6 @@ PROMPT_CMP = ("Below is a query followed by two responses. Pick a "
               "### YOUR CHOICE:")
 
 
-@torch.no_grad()
 def cal_acc(logits, labels, choices):
     shift_logits = logits[..., :-1, :].contiguous()
     shift_labels = labels[..., 1:].contiguous()
@@ -51,7 +50,6 @@ def cal_acc(logits, labels, choices):
     return new_labels, predicted, predicted.eq(new_labels).sum().item()
 
 
-@torch.no_grad()
 def evaluation(model, dataloader, choices):
     test_batches = tqdm(dataloader)
     correct, total = 0, 0
@@ -197,7 +195,7 @@ def eval_for_agreement(init_cfg, label, prompt=PROMPT_CMP):
     results_display = open(
         os.path.join(init_cfg.outdir, f'{label}_test_results.txt'), 'w')
     dataloader = DataLoader(dataset=test_dataset,
-                            batch_size=10,
+                            batch_size=1,
                             shuffle=False,
                             collate_fn=LLMDataCollator(tokenizer=tokenizer))
 
