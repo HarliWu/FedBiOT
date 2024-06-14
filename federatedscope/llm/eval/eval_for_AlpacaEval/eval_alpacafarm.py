@@ -73,7 +73,7 @@ def evaluation(model, dataloader, choices):
         total = total + new_labels.size(0)
         correct = correct + batch_correct
 
-        print(correct, total, new_labels, labels)
+        # print(correct, total, new_labels, labels)
         test_batches.set_postfix({
             'correct': correct,
             'total': total,
@@ -174,14 +174,14 @@ def eval_for_agreement(init_cfg, label, prompt=PROMPT_CMP):
                 "instruction": new_ins,
                 "output_A": example["output_1"],
                 "output_B": example["output_2"],
-                "choice": example["preference"] - 1,
+                "choice": " " + chr(example["preference"] - 1 + ord("A")),
             }
         else:
             record = {
                 "instruction": example["instruction"],
                 "output_A": example["output_1"],
                 "output_B": example["output_2"],
-                "choice": example["preference"] - 1,
+                "choice": " " + chr(example["preference"] - 1 + ord("A")),
             }
         list_data_dict.append(record)
 
