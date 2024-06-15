@@ -150,6 +150,7 @@ class LLMComparisonDataset(Dataset):
                  choice='choice'):
         for example in list_data_dict:
             if int(example[choice]) == 1:
+                logger.info(example)
                 # output_B is better than output_A
                 example[output_A], example[output_B] = \
                     example[output_B], example[output_A]
