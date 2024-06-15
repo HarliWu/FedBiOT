@@ -247,7 +247,7 @@ def evaluation_multiple_clients(dir, clients):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--pairwise', dest='pairwise', type=bool)
+    parser.add_argument('--pairwise', dest='pairwise', action="store_true")
     parser.add_argument('--model-outputs-file',
                         dest='file',
                         help='Path to model-generated outputs',
