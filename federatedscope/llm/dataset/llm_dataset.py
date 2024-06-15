@@ -148,12 +148,15 @@ class LLMComparisonDataset(Dataset):
                  output_A='output_A',
                  output_B='output_B',
                  choice='choice'):
+        new_list_data_dict = []
         for example in list_data_dict:
-            if int(example[choice]) == 1:
-                logger.info(example)
+            if choice in example and int(example[choice]) == 1:
                 # output_B is better than output_A
                 example[output_A], example[output_B] = \
                     example[output_B], example[output_A]
+                new_list_data_dict.append(example)
+        # remove the data without choice
+        list_data_dict = new_list_data_dict
 
         # After switching, output_A > output_B
         self.win_dataset = LLMDataset(list_data_dict=list_data_dict,

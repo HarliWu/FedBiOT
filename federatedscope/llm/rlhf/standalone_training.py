@@ -39,6 +39,8 @@ def cal_acc(logits, labels, choices):
     for idx, choice in enumerate(choices):
         new_labels[shift_labels == choice] = idx
 
+    # TODO: fix a bug if the new_labels do not contain the choice
+
     new_labels = new_labels.view(-1)
     new_logits = shift_logits[..., choices].view(-1, len(choices))
     new_logits = new_logits[(new_labels != DefaultToken.IGNORE_INDEX.value), :]
