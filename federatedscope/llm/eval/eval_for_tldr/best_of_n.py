@@ -414,13 +414,13 @@ def main():
                             output_dir=init_cfg.outdir,
                             print_client_result=True)
     elif init_cfg.llm.adapter.count > 1:
-        for i in range(init_cfg.llm.adapter.count):
-            model.set_active_adapter(f"Adapter_{i}")
-            model.eval()
-            adapter_result = best_of_n(model, dataset, tokenizer, n=16)
-            path = os.path.join(init_cfg.outdir,
-                                f'test_results_adapter_{i}.txt')
-            print_results(open(path, 'w'), dataset, adapter_result)
+        # for i in range(init_cfg.llm.adapter.count):
+        #     model.set_active_adapter(f"Adapter_{i}")
+        #     model.eval()
+        #     adapter_result = best_of_n(model, dataset, tokenizer, n=16)
+        #     path = os.path.join(init_cfg.outdir,
+        #                         f'test_results_adapter_{i}.txt')
+        #     print_results(open(path, 'w'), dataset, adapter_result)
         results = best_of_n_multilora(model, dataset, tokenizer, n=16)
     elif init_cfg.trainer.type == "llmpporewardtrainer":
         results = best_of_n_by_reward(model, dataset, tokenizer, n=16)
