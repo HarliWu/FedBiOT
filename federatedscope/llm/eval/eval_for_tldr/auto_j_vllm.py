@@ -184,7 +184,7 @@ def eval_win_rate(file_path):
     auto_j_comments, auto_j_ratings = auto_j_eval_rating(dataset)
 
     # print the evaluation results
-    with open(file_path + '_autoj_eval.txt', 'w') as f:
+    with open(file_path + '_autoj_eval_win.txt', 'w') as f:
         for sample, comment, rating in zip(dataset, auto_j_comments,
                                            auto_j_ratings):
             f.write(f'Subreddit: {sample["subreddit"]}\n\n'
