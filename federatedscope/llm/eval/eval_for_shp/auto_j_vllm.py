@@ -7,6 +7,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from vllm import LLM, SamplingParams
 from federatedscope.llm.eval.eval_for_tldr.auto_j_constants_prompt \
     import build_autoj_input
+import json
 
 
 def extract_single_rating(score_output):
@@ -85,8 +86,12 @@ def read_file(path='test_results.txt'):
     return colletion
 
 
+def read_json(path='test_results.txt'):
+    return json.load(open(path, 'r'))
+
+
 def evaluation(file_path):
-    dataset = read_file(file_path)
+    dataset = read_json(file_path)
     auto_j_comments, auto_j_ratings = auto_j_eval_rating(dataset)
 
     # print the evaluation results
