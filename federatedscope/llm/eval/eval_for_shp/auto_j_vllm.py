@@ -87,7 +87,10 @@ def read_file(path='test_results.txt'):
 
 
 def read_json(path='test_results.txt'):
-    return json.load(open(path, 'r'))
+    dataset = json.load(open(path, 'r'))
+    for data in dataset:
+        data['query'] = data['instruction']
+    return dataset
 
 
 def evaluation(file_path):
