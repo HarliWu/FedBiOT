@@ -90,6 +90,7 @@ def read_json(path='test_results.txt'):
     dataset = json.load(open(path, 'r'))
     for data in dataset:
         data['query'] = data['instruction']
+        data['response'] = data['output']
     return dataset
 
 
