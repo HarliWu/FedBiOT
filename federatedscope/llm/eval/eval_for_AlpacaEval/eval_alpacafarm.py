@@ -102,7 +102,7 @@ def eval_for_generation(init_cfg, prompt=PROMPT):
                            max_new_tokens=init_cfg.llm.max_new_token)
 
     eval_data_dict = []
-    for example in data:
+    for example in tqdm(data):
         if example["input"] is None or example["input"] == "":
             new_ins = example["instruction"] + "\n\n" + example["input"]
             record = {
