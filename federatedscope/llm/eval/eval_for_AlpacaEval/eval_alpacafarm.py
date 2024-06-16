@@ -126,7 +126,7 @@ def eval_for_generation(init_cfg, prompt=PROMPT):
 
     # save the evaluation result to a file
     eval_path = os.path.join(init_cfg.outdir,
-                             f'{init_cfg.federate.save_to}_alpaca_eval.txt')
+                             f'{fschatbot.curpfx}_alpaca_eval.txt')
     json.dump(eval_data_dict, open(eval_path, 'w'), indent=2)
 
     return eval_data_dict
