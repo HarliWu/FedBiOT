@@ -75,7 +75,7 @@ def auto_j_eval_win_rate(dataset):
                                      top_p=1.0,
                                      max_tokens=1024)
 
-    auto_j_comments, auto_j_ratings = [], []
+    auto_j_comments, auto_j_choices = [], []
 
     inputs = []
 
@@ -88,11 +88,11 @@ def auto_j_eval_win_rate(dataset):
 
     outputs = llm.generate(inputs, sampling_params)
     auto_j_comments = [item.outputs[0].text for item in outputs]
-    auto_j_ratings = [
+    auto_j_choices = [
         extract_pariwise_result(judgement) for judgement in auto_j_comments
     ]
 
-    return auto_j_comments, auto_j_ratings
+    return auto_j_comments, auto_j_choices
 
 
 def read_file(path='test_results.txt'):
@@ -181,29 +181,29 @@ def evaluation(file_path):
 
 def eval_win_rate(file_path):
     dataset = read_file(file_path)
-    auto_j_comments, auto_j_ratings = auto_j_eval_rating(dataset)
+    auto_j_comments, auto_j_choices = auto_j_eval_win_rate(dataset)
 
     # print the evaluation results
     with open(file_path + '_autoj_eval_win.txt', 'w') as f:
-        for sample, comment, rating in zip(dataset, auto_j_comments,
-                                           auto_j_ratings):
+        for sample, comment, choice in zip(dataset, auto_j_comments,
+                                           auto_j_choices):
             f.write(f'Subreddit: {sample["subreddit"]}\n\n'
                     f'Title:\n{sample["title"]}\n\n'
                     f'Post:\n{sample["post"]}\n\n'
                     f'Best generated summary:\n{sample["response"]}\n\n'
                     f'Human summary:\n{sample["response_another"]}\n\n'
                     f'Auto-J Comment:\n{comment}\n\n'
-                    f'Auto-J Rating: {rating}\n\n')
+                    f'Auto-J Selection: {choice}\n\n')
             f.write('==========================\n\n')
             f.flush()
-        f.write(f'{auto_j_ratings}\n\n')
-        win = np.sum(np.array(auto_j_ratings) == 0)
-        lose = np.sum(np.array(auto_j_ratings) == 1)
-        tie = np.sum(np.array(auto_j_ratings) == 2)
+        f.write(f'{auto_j_choices}\n\n')
+        win = np.sum(np.array(auto_j_choices) == 0)
+        lose = np.sum(np.array(auto_j_choices) == 1)
+        tie = np.sum(np.array(auto_j_choices) == 2)
         rate = win / (win + lose + tie) * 100
         f.write(f'Win Rate (win/lose/tie): {rate}% ({win}/{lose}/{tie})\n\n')
 
-    return auto_j_ratings, np.mean(auto_j_ratings)
+    return auto_j_choices, rate
 
 
 def evaluation_multiple_clients(dir, clients):
