@@ -1,0 +1,53 @@
+use_gpu: True
+device: 0
+early_stop:
+  patience: 0
+federate:
+  mode: standalone
+  client_num: 1
+  total_round_num: 1000
+  save_to: "checkpoints/llama2_shp_rlhf.ckpt"
+  save_freq: 50
+  share_local_model: True
+  online_aggr: False
+data:
+  root: data/
+  type: 'shp-rlhf@llm'
+  splits: [0.99,0.09,0.01]
+  splitter: 'iid'
+llm:
+  rlhf: True
+  tok_len: 1200
+  max_new_token: 256
+  accelerator:
+    use: True
+  chat:
+    max_len: 1200
+  adapter:
+    use: True
+    args: [ { 'adapter_package': 'peft', 'adapter_method': 'lora', 'r': 8, 'lora_alpha': 16, 'lora_dropout': 0.05 } ]
+  reward_coeff: 0.1
+  grad_accum_step: 16
+dataloader:
+  batch_size: 1
+model:
+  type: 'mlabonne/Gemmalpaca-2B@huggingface_llm'
+  # load_from_local_pretrained_fs_config: 'reward_yaml/alpaca-7b.yaml'
+  # load_from_local_pretrained_model_path: 'checkpoints/alpaca-7b.ckpt'
+train:
+  local_update_steps: 10
+  batch_or_epoch: batch
+  optimizer:
+    type: RMSprop
+    lr: 0.000001
+  is_enable_half: True
+criterion:
+  type: CrossEntropyLoss
+trainer:
+  type: llmrewardtrainer
+eval:
+  freq: 50
+  metrics: ['loss', 'acc']
+  best_res_update_round_wise_key: val_loss
+  count_flops: False
+expname: shp/rlhf/llama2-7b
