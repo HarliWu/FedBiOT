@@ -116,6 +116,7 @@ class LLMDataset(Dataset):
         for label, source_len in zip(labels,
                                      sources_tokenized["input_ids_lens"]):
             label[:source_len] = DefaultToken.IGNORE_INDEX.value
+            # TODO: remove the data which is longer than the max input length
         return dict(input_ids=input_ids, labels=labels)
 
     def __len__(self):
