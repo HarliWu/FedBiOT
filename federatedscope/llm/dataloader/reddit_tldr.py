@@ -9,12 +9,21 @@ from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
     LLMDataset, LLMComparisonDataset
 
 TLDR_PROMPT_DICT = {
-    "summary": ("Below is a forum post. Write a precise and concise summary "
-                "that includes the most important points of the post.\n\n"
-                "### SUBREDDIT: r/{subreddit}\n"
-                "### TITLE: {title}\n"
-                "### POST: {post}\n"
-                "### TL;DR:"),
+    # "summary": ("Below is a forum post. Write a precise and concise summary "
+    #             "that includes the most important points of the post.\n\n"
+    #             "### SUBREDDIT: r/{subreddit}\n"
+    #             "### TITLE: {title}\n"
+    #             "### POST: {post}\n"
+    #             "### TL;DR:"),
+    "summary": (
+        "Below is an instruction that describes a task. "
+        "Write a response that appropriately completes the request.\n\n"
+        "### Instruction:\nSummarize the following reddit post.\n\n"
+        "### Input:\n"
+        "SUBREDDIT: r/{subreddit}\n"
+        "TITLE: {title}\n"
+        "POST: {post}\n\n"
+        "### Response:"),
     "summary_cmp": (
         "Below is a forum post followed by two summaries. "
         "Pick a more precise and concise one that summarizes the most "
