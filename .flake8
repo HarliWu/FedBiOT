@@ -9,6 +9,7 @@ exclude =
   demo/*
   federatedscope/core/proto/gRPC_comm_manager_pb2.py
   federatedscope/llm/eval/eval_for_tldr/auto_j_constants_prompt.py
+  federatedscope/llm/eval/eval_for_AlpacaEval/as_eval.py
 max-line-length = 79
 inline-quotes = "
 ignore =
