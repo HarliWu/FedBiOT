@@ -283,21 +283,21 @@ To make the federated fine-tuning efficient, we adopt a series of acceleration o
   - Torch's garbage collection mechanism may not be timely resulting in OOM, please set `cfg.eval.count_flops` to `False`.
 
 ## Citation
-If you find FedBiOT useful for your research or development, please cite the following paper:
+If you find FedBiOT useful for your research or development, please cite the following papers:
 ```
 @inproceedings{wu2024fedbiot,
-author = {Wu, Feijie and Li, Zitao and Li, Yaliang and Ding, Bolin and Gao, Jing},
-title = {FedBiOT: LLM Local Fine-tuning in Federated Learning without Full Model},
-year = {2024},
-booktitle = {Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining},
-pages = {3345–3355}
+  author = {Wu, Feijie and Li, Zitao and Li, Yaliang and Ding, Bolin and Gao, Jing},
+  title = {FedBiOT: LLM Local Fine-tuning in Federated Learning without Full Model},
+  year = {2024},
+  booktitle = {Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining},
+  pages = {3345–3355}
 }
 
 @inproceedings{kuang2024federatedscope,
-author = {Kuang, Weirui and Qian, Bingchen and Li, Zitao and Chen, Daoyuan and Gao, Dawei and Pan, Xuchen and Xie, Yuexiang and Li, Yaliang and Ding, Bolin and Zhou, Jingren},
-title = {FederatedScope-LLM: A Comprehensive Package for Fine-tuning Large Language Models in Federated Learning},
-year = {2024},
-booktitle = {Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining},
-pages = {5260–5271}
+  author = {Kuang, Weirui and Qian, Bingchen and Li, Zitao and Chen, Daoyuan and Gao, Dawei and Pan, Xuchen and Xie, Yuexiang and Li, Yaliang and Ding, Bolin and Zhou, Jingren},
+  title = {FederatedScope-LLM: A Comprehensive Package for Fine-tuning Large Language Models in Federated Learning},
+  year = {2024},
+  booktitle = {Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining},
+  pages = {5260–5271}
 }
 ```
