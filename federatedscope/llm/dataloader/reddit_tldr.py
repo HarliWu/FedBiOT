@@ -245,12 +245,15 @@ def load_human_finetuning_dataset(data_root,
 
 
 def load_comparison_dataset(data_root, tokenizer, max_num_test=-1):
-    if os.path.exists(os.path.join(data_root, 'train.pickle')) and \
-        os.path.exists(os.path.join(data_root, 'val.pickle')) and \
-            os.path.exists(os.path.join(data_root, 'test.pickle')):
-        with open(os.path.join(data_root, 'train.pickle'), 'rb') as f_train, \
-            open(os.path.join(data_root, 'val.pickle'), 'rb') as f_val, \
-                open(os.path.join(data_root, 'test.pickle'), 'rb') as f_test:
+    token_name = tokenizer.name_or_path
+    train_set_path = os.path.join(data_root, f'{token_name}_train.pickle')
+    val_set_path = os.path.join(data_root, f'{token_name}_val.pickle')
+    test_set_path = os.path.join(data_root, f'{token_name}_test.pickle')
+    if os.path.exists(train_set_path) and os.path.exists(val_set_path) \
+            and os.path.exists(test_set_path):
+        with open(train_set_path, 'rb') as f_train, \
+                open(val_set_path, 'rb') as f_val, \
+                open(test_set_path, 'rb') as f_test:
             train_dataset = pickle.load(f_train)
             val_dataset = pickle.load(f_val)
             test_dataset = pickle.load(f_test)
@@ -286,9 +289,9 @@ def load_comparison_dataset(data_root, tokenizer, max_num_test=-1):
             choice='choice')
 
         # Store these three lists to a pickle file
-        with open(os.path.join(data_root, 'train.pickle'), 'wb') as f_train, \
-            open(os.path.join(data_root, 'val.pickle'), 'wb') as f_val, \
-                open(os.path.join(data_root, 'test.pickle'), 'wb') as f_test:
+        with open(train_set_path, 'wb') as f_train, \
+                open(val_set_path, 'wb') as f_val, \
+                open(test_set_path, 'wb') as f_test:
             pickle.dump(train_dataset, f_train)
             pickle.dump(val_dataset, f_val)
             pickle.dump(test_dataset, f_test)
@@ -310,15 +313,16 @@ def load_comparison_dataset(data_root, tokenizer, max_num_test=-1):
 
 
 def load_comparison_dataset_by_choice(data_root, tokenizer, max_num_test=-1):
-    if os.path.exists(os.path.join(data_root, 'train_choice.pickle')) and \
-        os.path.exists(os.path.join(data_root, 'val_choice.pickle')) and \
-            os.path.exists(os.path.join(data_root, 'test_choice.pickle')):
-        with open(os.path.join(data_root,
-                               'train_choice.pickle'), 'rb') as f_train, \
-            open(os.path.join(data_root,
-                              'val_choice.pickle'), 'rb') as f_val, \
-                open(os.path.join(data_root,
-                                  'test_choice.pickle'), 'rb') as f_test:
+    token_name = os.path.basename(tokenizer.name_or_path)
+    train_set_path = os.path.join(data_root,
+                                  f'{token_name}_train_choice.pickle')
+    val_set_path = os.path.join(data_root, f'{token_name}_val_choice.pickle')
+    test_set_path = os.path.join(data_root, f'{token_name}_test_choice.pickle')
+    if os.path.exists(train_set_path) and os.path.exists(val_set_path) and \
+            os.path.exists(test_set_path):
+        with open(train_set_path, 'rb') as f_train, \
+                open(val_set_path, 'rb') as f_val, \
+                open(test_set_path, 'rb') as f_test:
             train_dataset = pickle.load(f_train)
             val_dataset = pickle.load(f_val)
             test_dataset = pickle.load(f_test)
@@ -361,12 +365,9 @@ def load_comparison_dataset_by_choice(data_root, tokenizer, max_num_test=-1):
             output_tag='choice')
 
         # Store these three lists to a pickle file
-        with open(os.path.join(data_root,
-                               'train_choice.pickle'), 'wb') as f_train, \
-            open(os.path.join(data_root,
-                              'val_choice.pickle'), 'wb') as f_val, \
-                open(os.path.join(data_root,
-                                  'test_choice.pickle'), 'wb') as f_test:
+        with open(train_set_path, 'wb') as f_train, \
+                open(val_set_path, 'wb') as f_val, \
+                open(test_set_path, 'wb') as f_test:
             pickle.dump(train_dataset, f_train)
             pickle.dump(val_dataset, f_val)
             pickle.dump(test_dataset, f_test)
