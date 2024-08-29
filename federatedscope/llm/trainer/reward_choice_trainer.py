@@ -51,9 +51,9 @@ class RewardChoiceTrainer(LLMTrainer):
             self.choices = []
             for choice in config.trainer.choices:
                 self.choices.append(
-                    self.tokenizer(f'{choice}')['input_ids'][-1])
+                    self.tokenizer(f': {choice}')['input_ids'][-1])
                 # assert len(self.choices[-1]) == 1
-            # logger.info(self.choices)
+            logger.info(f'Choice indices: {self.choices}')
         except AssertionError:
             raise AssertionError('The choice should be limited to one token.')
         except:
