@@ -9,14 +9,17 @@ from accelerate import dispatch_model, infer_auto_device_map, \
 from accelerate.utils import get_balanced_memory
 
 from transformers import (OPTForCausalLM, GPT2LMHeadModel, BloomForCausalLM,
-                          LlamaForCausalLM, LlamaForSequenceClassification)
+                          LlamaForCausalLM, LlamaForSequenceClassification,
+                          Qwen2ForCausalLM, GemmaForCausalLM)
 
 MODEL_UNIT = {
     LlamaForCausalLM: ['LlamaDecoderLayer'],
     LlamaForSequenceClassification: ['LlamaDecoderLayer'],
     BloomForCausalLM: ['BloomBlock'],
     GPT2LMHeadModel: ['GPT2Block'],
-    OPTForCausalLM: ['OPTDecoderLayer']
+    OPTForCausalLM: ['OPTDecoderLayer'],
+    Qwen2ForCausalLM: ['Qwen2DecoderLayer'],
+    GemmaForCausalLM: ['GemmaDecoderLayer']
 }
 
 import logging
@@ -226,6 +229,11 @@ class AdapterModel(nn.Module):
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 grad_params.append(name)
+            # Special case for multiple adapters
+            for adap_name in self.adapter_names:
+                if (adap_name in name) and (name not in grad_params):
+                    grad_params.append(name)
+                    break
         model_state_dict = self.model.state_dict()
         new_state_dict = OrderedDict()
         for k, v in model_state_dict.items():
