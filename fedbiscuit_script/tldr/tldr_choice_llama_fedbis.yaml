@@ -7,7 +7,7 @@ federate:
   client_num: 53
   sample_client_num: 5
   total_round_num: 500
-  save_to: "checkpoints/tldr_choice_gemma_fedbiscuit_u3.ckpt"
+  save_to: "checkpoints/tldr_choice_llama_fedbis.ckpt"
   ignore_weight: True
   save_freq: 50
   share_local_model: True
@@ -25,20 +25,13 @@ llm:
     max_len: 1024
   adapter:
     use: True
-    count: 3
-    warmup:
-      use: True
-      round: 50
-    grouping:
-      use: True
-      round: 50
     args: [ { 'adapter_package': 'peft', 'adapter_method': 'lora', 'r': 8, 'lora_alpha': 16, 'lora_dropout': 0.05 } ]
   # reward_coeff: 0.1
-  grad_accum_step: 2
+  grad_accum_step: 8
 dataloader:
-  batch_size: 8
+  batch_size: 2
 model:
-  type: 'google/gemma-2b@huggingface_llm'
+  type: 'meta-llama/Llama-2-7b-hf@huggingface_llm'
 train:
   local_update_steps: 30
   batch_or_epoch: batch
@@ -59,4 +52,4 @@ eval:
   metrics: ['loss', 'acc']
   best_res_update_round_wise_key: test_loss
   count_flops: False
-expname: tldr/choice_gemma/fedbiscuit_u3
+expname: tldr/choice_llama/fedbis
