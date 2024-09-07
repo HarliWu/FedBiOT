@@ -39,10 +39,13 @@ class MetaSplitter(BaseSplitter):
         random.shuffle(idx_slice)
 
         # print the size of each categories
+        tot_size = 0
         for i, cat in enumerate(categories):
             logger.info(f'Index: {i}\t'
                         f'Category: {cat}\t'
                         f'Size: {len(idx_slice[i])}')
+            tot_size += len(idx_slice[i])
+        logger.info(f'Total size: {tot_size}')
 
         if len(categories) < self.client_num:
             logger.warning(
