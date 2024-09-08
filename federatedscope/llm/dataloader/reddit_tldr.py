@@ -16,7 +16,8 @@ TLDR_PROMPT_DICT = {
     #             "### POST: {post}\n"
     #             "### TL;DR:"),
     "summary": (
-        "Below is an instruction that describes a task. "
+        "Below is an instruction that describes a task, "
+        "paired with an input that provides further context. "
         "Write a response that appropriately completes the request.\n\n"
         "### Instruction:\nSummarize the following reddit post.\n\n"
         "### Input:\n"
@@ -36,7 +37,22 @@ TLDR_PROMPT_DICT = {
         "### POST: {post}\n"
         "### SUMMARY A:{output_A}\n"
         "### SUMMARY B:{output_B}\n"
-        "### YOUR CHOICE:")
+        "### YOUR CHOICE:"),
+    "mix_cmp": ("Below is an instruction that describes a task, "
+                "paired with an input that provides further context. "
+                "There are two responses that complete the request. "
+                "Pick an appropriate response and state your choice with "
+                "a single capital letter, i.e., "
+                "\"A\" if RESPONSE A is better and more appropriate, "
+                "\"B\" if RESPONSE B is better and more appropriate.\n\n"
+                "### Instruction:\nSummarize the following reddit post.\n\n"
+                "### Input:\n"
+                "SUBREDDIT: r/{subreddit}\n"
+                "TITLE: {title}\n"
+                "POST: {post}\n\n"
+                "### RESPONSE A: {output_A}\n"
+                "### RESPONSE B: {output_B}\n"
+                "### YOUR CHOICE:")
 }
 
 
@@ -309,6 +325,15 @@ def load_comparison_dataset(data_root, tokenizer, max_num_test=-1):
 
     dataset = (train_dataset, val_dataset, test_dataset)
 
+    return dataset
+
+
+def load_best_dataset(data_root, tokenizer, max_num_test=-1):
+    train_dataset, val_dataset, test_dataset = \
+        load_comparison_dataset(data_root, tokenizer, max_num_test)
+    # Use the win_dataset only
+    dataset = (train_dataset.win_dataset, val_dataset.win_dataset,
+               test_dataset.win_dataset)
     return dataset
 
 

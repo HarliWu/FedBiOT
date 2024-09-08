@@ -7,8 +7,8 @@ import datasets
 from federatedscope.core.splitters.generic.lda_splitter import LDASplitter
 from federatedscope.core.data.utils import download_url
 from federatedscope.llm.dataloader.dataloader import load_jsonls, load_jsonl
-from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
-    LLMDataset, LLMComparisonDataset
+from federatedscope.llm.dataset.llm_dataset import LLMComparisonDataset, \
+    LLMDataset
 
 SHP_PROMPT_DICT = {
     "shp": ("Below is an instruction that describes a task. "
@@ -21,6 +21,16 @@ SHP_PROMPT_DICT = {
                 "i.e., \"A\" if RESPONSE A is better, "
                 "\"B\" if RESPONSE B is better.\n\n"
                 "### QUERY: {instruction}\n"
+                "### RESPONSE A: {output_A}\n"
+                "### RESPONSE B: {output_B}\n"
+                "### YOUR CHOICE:"),
+    "mix_cmp": ("Below is an instruction that describes a task. "
+                "There are two responses that complete the request. "
+                "Pick an appropriate response and state your choice with "
+                "a single capital letter, i.e., "
+                "\"A\" if RESPONSE A is better and more appropriate, "
+                "\"B\" if RESPONSE B is better and more appropriate.\n\n"
+                "### Instruction:\n{instruction}\n\n"
                 "### RESPONSE A: {output_A}\n"
                 "### RESPONSE B: {output_B}\n"
                 "### YOUR CHOICE:")
@@ -117,6 +127,45 @@ def _download_shp(data_root):
     return list_train_dict, list_val_dict, list_test_dict
 
 
+def shp_dataset(data_root, num_clients, tokenizer):
+    list_train_dict, list_val_dict, list_test_dict = \
+        _download_shp_cmpr(data_root)
+
+    # First, disjoint by post instructions
+    list_train_instructions, _, _ = _download_shp(data_root)
+    cat_idx_map = {}
+    for sample in list_train_instructions:
+        if sample['category'] not in cat_idx_map:
+            cat_idx_map[sample['category']] = len(cat_idx_map)
+        sample['categories'] = cat_idx_map[sample['category']]
+
+    # Second, use Dirichlet data splitter
+    splitter = LDASplitter(num_clients, alpha=0.3)
+    inst_split_list = splitter(list_train_instructions)
+    inst_client_map = {}
+    for idx, sublist in enumerate(inst_split_list):
+        for sample in sublist:
+            inst_client_map[sample['instruction']] = idx
+
+    # Update their categories and force the data splitter as meta
+    for sample in list_train_dict:
+        sample['domain'] = sample['category']
+        sample['category'] = \
+            f"Client_{inst_client_map[sample['instruction']]}"
+
+    # Select the data with less or equal to 512 tokens
+    new_list_train_dict = []
+    for sample in list_train_dict:
+        len_inst = len(tokenizer(sample['instruction'])['input_ids'])
+        len_resA = len(tokenizer(sample['output_A'])['input_ids'])
+        len_resB = len(tokenizer(sample['output_B'])['input_ids'])
+        if len_inst + len_resA + len_resB <= 512:
+            new_list_train_dict.append(sample)
+    list_train_dict = new_list_train_dict
+
+    return list_train_dict, list_val_dict, list_test_dict
+
+
 def load_rlhf_dataset(data_root,
                       tokenizer,
                       max_num_test=-1,
@@ -136,15 +185,13 @@ def load_rlhf_dataset(data_root,
         return list_train_dict, list_val_dict, list_test_dict
 
 
-def load_shp_cmp_dataset_by_choice(data_root,
-                                   tokenizer,
-                                   config,
-                                   max_num_test=-1):
+def load_comparison_dataset(data_root, tokenizer, config, max_num_test=-1):
+    token_name = os.path.basename(tokenizer.name_or_path)
     num_clients = config.federate.client_num
     train_fp, val_fp, test_fp = [
-        os.path.join(data_root, f'train_choice_{num_clients}.pickle'),
-        os.path.join(data_root, 'val_choice.pickle'),
-        os.path.join(data_root, 'test_choice.pickle')
+        os.path.join(data_root, f'{token_name}_train_{num_clients}.pickle'),
+        os.path.join(data_root, f'{token_name}_val.pickle'),
+        os.path.join(data_root, f'{token_name}_test.pickle')
     ]
 
     if os.path.exists(train_fp) and os.path.exists(val_fp) and os.path.exists(
@@ -157,29 +204,91 @@ def load_shp_cmp_dataset_by_choice(data_root,
 
     else:
         list_train_dict, list_val_dict, list_test_dict = \
-            _download_shp_cmpr(data_root)
+            shp_dataset(data_root, num_clients, tokenizer)
 
-        # First, disjoint by post instructions
-        list_train_instructions, _, _ = _download_shp(data_root)
-        cat_idx_map = {}
-        for sample in list_train_instructions:
-            if sample['category'] not in cat_idx_map:
-                cat_idx_map[sample['category']] = len(cat_idx_map)
-            sample['categories'] = cat_idx_map[sample['category']]
+        # load dataset, which should be tuple
+        train_dataset = LLMComparisonDataset(
+            list_train_dict,
+            tokenizer,
+            prompt_input=SHP_PROMPT_DICT['shp'],
+            prompt_no_input=SHP_PROMPT_DICT['shp'],
+            output_A='output_A',
+            output_B='output_B',
+            choice='choice')
+        val_dataset = LLMComparisonDataset(
+            list_val_dict,
+            tokenizer,
+            prompt_input=SHP_PROMPT_DICT['shp'],
+            prompt_no_input=SHP_PROMPT_DICT['shp'],
+            output_A='output_A',
+            output_B='output_B',
+            choice='choice')
+        test_dataset = LLMComparisonDataset(
+            list_test_dict,
+            tokenizer,
+            prompt_input=SHP_PROMPT_DICT['shp'],
+            prompt_no_input=SHP_PROMPT_DICT['shp'],
+            output_A='output_A',
+            output_B='output_B',
+            choice='choice')
 
-        # Second, use Dirichlet data splitter
-        splitter = LDASplitter(num_clients, alpha=0.3)
-        inst_split_list = splitter(list_train_instructions)
-        inst_client_map = {}
-        for idx, sublist in enumerate(inst_split_list):
-            for sample in sublist:
-                inst_client_map[sample['instruction']] = idx
+        # Store these three lists to a pickle file
+        with open(train_fp, 'wb') as f_train, \
+                open(val_fp, 'wb') as f_val, \
+                open(test_fp, 'wb') as f_test:
+            pickle.dump(train_dataset, f_train)
+            pickle.dump(val_dataset, f_val)
+            pickle.dump(test_dataset, f_test)
 
-        # Update their categories and force the data splitter as meta
-        for sample in list_train_dict:
-            sample['domain'] = sample['category']
-            sample['category'] = \
-                f"Client_{inst_client_map[sample['instruction']]}"
+    # shrink val and test dataset
+    if max_num_test > 0:
+        val_dataset.win_dataset.input_ids = \
+            val_dataset.win_dataset.input_ids[:max_num_test]
+        val_dataset.lose_dataset.input_ids = \
+            val_dataset.lose_dataset.input_ids[:max_num_test]
+        test_dataset.win_dataset.input_ids = \
+            test_dataset.win_dataset.input_ids[:max_num_test]
+        test_dataset.lose_dataset.input_ids = \
+            test_dataset.lose_dataset.input_ids[:max_num_test]
+
+    dataset = (train_dataset, val_dataset, test_dataset)
+
+    return dataset
+
+
+def load_shp_best_dataset(data_root, tokenizer, config, max_num_test=-1):
+    train_dataset, val_dataset, test_dataset = \
+        load_comparison_dataset(data_root, tokenizer, config, max_num_test)
+    # Use the win_dataset only
+    dataset = (train_dataset.win_dataset, val_dataset.win_dataset,
+               test_dataset.win_dataset)
+    return dataset
+
+
+def load_shp_cmp_dataset_by_choice(data_root,
+                                   tokenizer,
+                                   config,
+                                   max_num_test=-1):
+    token_name = os.path.basename(tokenizer.name_or_path)
+    num_clients = config.federate.client_num
+    train_fp, val_fp, test_fp = [
+        os.path.join(data_root,
+                     f'{token_name}_train_choice_{num_clients}.pickle'),
+        os.path.join(data_root, f'{token_name}_val_choice.pickle'),
+        os.path.join(data_root, f'{token_name}_test_choice.pickle')
+    ]
+
+    if os.path.exists(train_fp) and os.path.exists(val_fp) and os.path.exists(
+            test_fp):
+        with open(train_fp, 'rb') as f_train, open(val_fp, 'rb') as f_val, \
+                open(test_fp, 'rb') as f_test:
+            train_dataset = pickle.load(f_train)
+            val_dataset = pickle.load(f_val)
+            test_dataset = pickle.load(f_test)
+
+    else:
+        list_train_dict, list_val_dict, list_test_dict = \
+            shp_dataset(data_root, num_clients, tokenizer)
 
         # For training dataset, we should exchange the order
         # and append the new training dataset to the list_train_dict
@@ -212,7 +321,8 @@ def load_shp_cmp_dataset_by_choice(data_root,
                                   output_tag='choice')
 
         # Store these three lists to a pickle file
-        with open(train_fp, 'wb') as f_train, open(val_fp, 'wb') as f_val, \
+        with open(train_fp, 'wb') as f_train, \
+                open(val_fp, 'wb') as f_val, \
                 open(test_fp, 'wb') as f_test:
             pickle.dump(train_dataset, f_train)
             pickle.dump(val_dataset, f_val)

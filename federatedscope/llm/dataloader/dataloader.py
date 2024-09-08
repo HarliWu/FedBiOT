@@ -457,6 +457,12 @@ def load_llm_dataset(config=None, **kwargs):
                                           tokenizer,
                                           max_num_test=1000)
 
+    elif dataset_name.lower() == 'reddit-tldr-best':
+        from federatedscope.llm.dataloader.reddit_tldr import \
+            load_best_dataset
+        data_root = os.path.join(config.data.root, 'reddit-tldr-comparison')
+        dataset = load_best_dataset(data_root, tokenizer, max_num_test=1000)
+
     elif dataset_name.lower() == 'reddit-tldr-comparison-choice':
         from federatedscope.llm.dataloader.reddit_tldr import \
             load_comparison_dataset_by_choice
@@ -473,6 +479,24 @@ def load_llm_dataset(config=None, **kwargs):
                                                  tokenizer,
                                                  config,
                                                  max_num_test=1000)
+
+    elif dataset_name.lower() == 'shp-best':
+        from federatedscope.llm.dataloader.shp import \
+            load_shp_best_dataset
+        data_root = os.path.join(config.data.root, 'shp')
+        dataset = load_shp_best_dataset(data_root,
+                                        tokenizer,
+                                        config,
+                                        max_num_test=1000)
+
+    elif dataset_name.lower() == 'shp-comparison-pairs':
+        from federatedscope.llm.dataloader.shp import \
+            load_comparison_dataset
+        data_root = os.path.join(config.data.root, 'shp')
+        dataset = load_comparison_dataset(data_root,
+                                          tokenizer,
+                                          config,
+                                          max_num_test=1000)
 
     else:
         raise ValueError(f'Not support data type {dataset_name}.')
