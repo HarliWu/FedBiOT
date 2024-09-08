@@ -5,6 +5,7 @@ early_stop:
 federate:
   mode: standalone
   client_num: 53
+  sample_client_num: 5
   total_round_num: 500
   save_to: "checkpoints/gemma_tldr_rlhf_fedavg.ckpt"
   save_freq: 50
