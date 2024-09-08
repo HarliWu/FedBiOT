@@ -6,7 +6,7 @@ federate:
   mode: standalone
   client_num: 1
   total_round_num: 500
-  save_to: "checkpoints/llama2_tldr_rlhf.ckpt"
+  save_to: "checkpoints/gemma_tldr_rlhf_<choice_ckpt>.ckpt"
   save_freq: 50
   share_local_model: True
   online_aggr: False
@@ -32,8 +32,6 @@ dataloader:
   batch_size: 4
 model:
   type: 'mlabonne/Gemmalpaca-2B@huggingface_llm'
-  # load_from_local_pretrained_fs_config: "reward_yaml/tldr_finetuning.yaml"
-  # load_from_local_pretrained_model_path: "checkpoints/900_llama2_tldr_finetuning.ckpt"
 train:
   local_update_steps: 30
   batch_or_epoch: batch
@@ -50,4 +48,4 @@ eval:
   metrics: ['loss', 'acc']
   best_res_update_round_wise_key: val_loss
   count_flops: False
-expname: tldr/rlhf/llama2-7b
+expname: tldr/rlhf_gemma/<choice_ckpt>
