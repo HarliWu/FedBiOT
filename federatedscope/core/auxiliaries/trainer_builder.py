@@ -30,7 +30,7 @@ TRAINER_CLASS_DICT = {
     "lptrainer": "LPTrainer",
     "atc_trainer": "ATCTrainer",
     "llmtrainer": "LLMTrainer",
-    "llmrewardtrainer": "RewardTrainer",
+    "llmdporewardtrainer": "DPORewardTrainer",
     "llmrewardchoicetrainer": "RewardChoiceTrainer",
     "llmpporewardtrainer": "PPORewardTrainer",
 }
@@ -163,7 +163,7 @@ def get_trainer(model=None,
             dict_path = "federatedscope.nlp.hetero_tasks.trainer"
         elif config.trainer.type.lower() in ['llmtrainer']:
             dict_path = "federatedscope.llm.trainer.trainer"
-        elif config.trainer.type.lower() in ['llmrewardtrainer']:
+        elif config.trainer.type.lower() in ['llmdporewardtrainer']:
             dict_path = "federatedscope.llm.trainer.reward_trainer"
         elif config.trainer.type.lower() in ['llmrewardchoicetrainer']:
             dict_path = "federatedscope.llm.trainer.reward_choice_trainer"

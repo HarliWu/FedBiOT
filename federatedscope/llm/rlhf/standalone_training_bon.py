@@ -21,7 +21,7 @@ from federatedscope.llm.dataset.llm_dataset import (
     LLMComparisonDataset,
 )
 from federatedscope.llm.trainer.reward_trainer import (
-    RewardTrainer,
+    DPORewardTrainer,
     _get_batch_logps,
     dpo_loss,
 )
@@ -190,7 +190,7 @@ class RLHF_finetuning:
         data = ClientData(self.config, train_dataset, None, None)
 
         # create DPO trainer
-        self.trainer = RewardTrainer(
+        self.trainer = DPORewardTrainer(
             self.model,
             data,
             self.device,

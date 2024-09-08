@@ -111,7 +111,7 @@ def dpo_loss(policy_chosen_logps,
     return losses.mean(), chosen_rewards, rejected_rewards
 
 
-class RewardTrainer(LLMTrainer):
+class DPORewardTrainer(LLMTrainer):
     def __init__(self,
                  model,
                  data,
@@ -330,9 +330,9 @@ class RewardTrainer(LLMTrainer):
 
 
 def call_reward_trainer(trainer_type):
-    if trainer_type == 'llmrewardtrainer':
-        trainer_builder = RewardTrainer
+    if trainer_type == 'llmdporewardtrainer':
+        trainer_builder = DPORewardTrainer
         return trainer_builder
 
 
-register_trainer('llmrewardtrainer', call_reward_trainer)
+register_trainer('llmdporewardtrainer', call_reward_trainer)
