@@ -82,6 +82,15 @@ def get_rlhf_dataset(config):
         generation_prompt = SHP_PROMPT_DICT["shp"]
         selector_prompt = SHP_PROMPT_DICT["shp_cmp"]
 
+    elif dataset_name.lower() == "shp-safe":
+        from federatedscope.llm.dataloader.shp import \
+            load_safe_dataset, SHP_PROMPT_DICT
+
+        data_root = os.path.join(config.data.root, 'shp')
+        list_train_dict, _, _ = load_safe_dataset()
+        generation_prompt = SHP_PROMPT_DICT["shp"]
+        selector_prompt = SHP_PROMPT_DICT["shp_cmp"]
+
     return data_root, list_train_dict, generation_prompt, selector_prompt
 
 
