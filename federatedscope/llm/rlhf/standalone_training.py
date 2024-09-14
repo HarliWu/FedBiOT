@@ -52,7 +52,7 @@ def cal_acc(logits, labels, choices):
         new_labels).sum().item()
 
 
-def get_rlhf_dataset(config):
+def get_rlhf_prompts_dataset(config):
     dataset_name, _ = config.data.type.split("@")
 
     if dataset_name.lower() == "reddit-tldr-rlhf":
@@ -62,7 +62,7 @@ def get_rlhf_dataset(config):
         )
 
         data_root = os.path.join(config.data.root, "reddit-tldr-comparison")
-        list_train_dict, _, _ = load_human_finetuning_dataset(
+        list_train_prompts, _, _ = load_human_finetuning_dataset(
             data_root,
             tokenizer=None,
             rlhf=True,
@@ -76,9 +76,9 @@ def get_rlhf_dataset(config):
             load_rlhf_dataset, SHP_PROMPT_DICT
 
         data_root = os.path.join(config.data.root, 'shp')
-        list_train_dict, _, _ = load_rlhf_dataset(data_root,
-                                                  tokenizer=None,
-                                                  max_num_test=1000)
+        list_train_prompts, _, _ = load_rlhf_dataset(data_root,
+                                                     tokenizer=None,
+                                                     max_num_test=1000)
         generation_prompt = SHP_PROMPT_DICT["shp"]
         selector_prompt = SHP_PROMPT_DICT["shp_cmp"]
 
@@ -87,11 +87,11 @@ def get_rlhf_dataset(config):
             load_safe_dataset, SHP_PROMPT_DICT
 
         data_root = os.path.join(config.data.root, 'shp')
-        list_train_dict, _, _ = load_safe_dataset()
+        list_train_prompts, _, _ = load_safe_dataset()
         generation_prompt = SHP_PROMPT_DICT["shp"]
         selector_prompt = SHP_PROMPT_DICT["shp_cmp"]
 
-    return data_root, list_train_dict, generation_prompt, selector_prompt
+    return (data_root, list_train_prompts, generation_prompt, selector_prompt)
 
 
 class RLHF_finetuning:
@@ -111,10 +111,10 @@ class RLHF_finetuning:
         # obtain RLHF input data
         (
             self.data_root,
-            self.list_train_dict,
+            self.list_train_prompts,
             self.generation_prompt,
             self.selector_prompt,
-        ) = get_rlhf_dataset(config)
+        ) = get_rlhf_prompts_dataset(config)
 
         self.config = config
         self.model = model
@@ -124,59 +124,69 @@ class RLHF_finetuning:
         self.device = device
         self._monitor = Monitor(config, monitored_object=self)
 
-    def train(self, saveto=None):
-        if saveto is None:
-            _, saveto = os.path.split(self.config.federate.save_to)
+    def load_pairwise_data(self):
+        # Name of a file saving the generated texts of original model
+        _, model_name = self.config.model.type.split("@")[0].split('/', 1)
+        dataset_name, _ = self.config.data.type.split("@")
+        num_comp = max(2, self.config.llm.num_completions)
+        gen_fp = os.path.join(
+            self.data_root,
+            f"rlhf_pair_data_{model_name}_{dataset_name}_{num_comp}.json")
+
+        if os.path.exists(gen_fp):
+            # load the file with generated responses
+            list_pairwise_data = json.load(open(gen_fp, "r"))
+            logger.info("Successfully loaded the generated text "
+                        f"from {gen_fp}")
+        else:
+            # generate the output
+            logger.info("The generated text file does not exist. "
+                        "Create a new one.")
+            list_pairwise_data = self._generate_pairwise_data(
+                self.list_train_prompts,
+                self.model,
+                self.tokenizer,
+                self.generation_prompt,
+                max_new_tokens=self.config.llm.max_new_token,
+                num_completions=self.config.llm.num_completions)
+
+            # save the data to a file
+            json.dump(list_pairwise_data, open(gen_fp, "w"))
+            logger.info("The generation process is done, and save "
+                        f"to {gen_fp}.")
+
+        return list_pairwise_data
+
+    def load_selector_preference_data(self, saveto):
         # This file save selector's choices
         fp = os.path.join(self.data_root, f"generated_choose_{saveto}.json")
 
         if os.path.exists(fp):
-            list_train_dict = json.load(open(fp, "r"))
+            list_preference_data = json.load(open(fp, "r"))
 
         else:
-            # This file save the generated texts of original model
-            if self.config.llm.num_completions <= 2:
-                gen_fp = os.path.join(self.data_root,
-                                      "generated_rlhf_data.json")
-            else:
-                num_comp = self.config.llm.num_completions
-                gen_fp = os.path.join(self.data_root,
-                                      f"generated_rlhf_data_{num_comp}.json")
-
-            if os.path.exists(gen_fp):
-                # load the file with generated responses
-                list_train_dict = json.load(open(gen_fp, "r"))
-                logger.info("Successfully loaded the generated text "
-                            f"from {gen_fp}")
-            else:
-                # generate the output
-                logger.info("The generated text file does not exist. "
-                            "Create a new one.")
-                list_train_dict = self._generate_pairwise_data(
-                    self.list_train_dict,
-                    self.model,
-                    self.tokenizer,
-                    self.generation_prompt,
-                    max_new_tokens=self.config.llm.max_new_token,
-                    num_completions=self.config.llm.num_completions)
-
-                # save the data to a file
-                json.dump(list_train_dict, open(gen_fp, "w"))
-                logger.info("The generation process is done, and save "
-                            f"to {gen_fp}.")
+            list_pairwise_data = self.load_pairwise_data()
 
             # choose the better one based on the given output
             logger.info("Select the better response.")
-            list_train_dict = self._choose_better_response(
-                list_train_dict,
+            list_preference_data = self._choose_better_response(
+                list_pairwise_data,
                 self.selector_model,
                 self.selector_tokenizer,
                 self.selector_prompt,
             )
-            logger.info(list_train_dict[0])
+            logger.info(list_preference_data[0])
             # save the choice to a file
-            json.dump(list_train_dict, open(fp, "w"))
+            json.dump(list_preference_data, open(fp, "w"))
             logger.info(f"Save the selection results to file {fp}")
+
+        return list_preference_data
+
+    def train(self, saveto=None):
+        if saveto is None:
+            _, saveto = os.path.split(self.config.federate.save_to)
+        # The training data should be selector's preference data
+        list_train_dict = self.load_selector_preference_data(saveto)
 
         # move selector model to cpu
         self.selector_model.cpu()
@@ -341,7 +351,7 @@ class RLHF_finetuning:
     def dpo_better_response(self):
         # generate the output
         list_train_dict = self._generate_pairwise_data(
-            self.list_train_dict,
+            self.list_train_prompts,
             self.model,
             self.tokenizer,
             self.generation_prompt,
