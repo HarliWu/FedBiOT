@@ -7,7 +7,7 @@ federate:
   client_num: 200
   sample_client_num: 10
   total_round_num: 500
-  save_to: "checkpoints/llama_shp_rlhf_feddpo.ckpt"
+  save_to: "checkpoints/shp_rlhf_llama_feddpo.ckpt"
   save_freq: 50
   share_local_model: True
   online_aggr: False

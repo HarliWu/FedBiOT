@@ -6,7 +6,7 @@ federate:
   mode: standalone
   client_num: 1
   total_round_num: 500
-  save_to: "checkpoints/gemma_shp_rlhf_4_<choice_ckpt>.ckpt"
+  save_to: "checkpoints/shp_rlhf_gemma_4_<choice_ckpt>.ckpt"
   save_freq: 50
   share_local_model: True
   online_aggr: False
