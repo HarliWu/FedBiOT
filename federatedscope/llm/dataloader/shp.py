@@ -170,11 +170,11 @@ def load_rlhf_dataset(data_root,
                       tokenizer,
                       max_num_test=-1,
                       raw_no_prompt=False):
-    list_train_dict, list_val_dict, list_test_dict = \
+    _, list_val_dict, list_test_dict = \
         _download_shp(data_root)
 
     # reorganize the training data for RLHF
-    list_train_dict = list_val_dict
+    list_train_dict = list_val_dict + list_test_dict
     list_val_dict = list_test_dict[:len(list_test_dict) // 2]
     list_test_dict = list_test_dict[len(list_test_dict) // 2:]
 
@@ -183,6 +183,13 @@ def load_rlhf_dataset(data_root,
                 list_test_dict[:max_num_test])
     else:
         return list_train_dict, list_val_dict, list_test_dict
+
+
+def load_safe_dataset():
+    ds = datasets.load_dataset("PKU-Alignment/PKU-SafeRLHF-prompt")
+    list_train_dict = list(ds['train']['prompt'])
+
+    return list_train_dict, None, None
 
 
 def load_comparison_dataset(data_root, tokenizer, config, max_num_test=-1):
