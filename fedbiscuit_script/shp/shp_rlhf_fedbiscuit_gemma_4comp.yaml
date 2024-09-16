@@ -18,7 +18,7 @@ data:
 llm:
   rlhf: True
   tok_len: 1024
-  max_new_token: 256
+  max_new_token: 300
   num_completions: 4
   accelerator:
     use: True

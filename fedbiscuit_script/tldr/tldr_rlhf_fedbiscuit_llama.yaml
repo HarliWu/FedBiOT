@@ -18,7 +18,7 @@ data:
 llm:
   rlhf: True
   tok_len: 1024
-  max_new_token: 60
+  max_new_token: 80
   accelerator:
     use: True
   chat:
