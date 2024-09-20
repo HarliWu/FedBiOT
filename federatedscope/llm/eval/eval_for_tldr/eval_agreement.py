@@ -116,13 +116,13 @@ def main():
     # list all choices
     choices = []
     for choice in init_cfg.trainer.choices:
-        choices.append(tokenizer(f'{choice}')['input_ids'][-1])
+        choices.append(tokenizer(f': {choice}')['input_ids'][-1])
 
     # Print result to a text file
     results_display = open(os.path.join(init_cfg.outdir, 'test_results.txt'),
                            'w')
     dataloader = DataLoader(dataset=test_dataset,
-                            batch_size=10,
+                            batch_size=25,
                             shuffle=False,
                             collate_fn=LLMDataCollator(tokenizer=tokenizer))
 

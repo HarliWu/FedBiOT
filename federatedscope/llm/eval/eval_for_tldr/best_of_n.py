@@ -6,6 +6,7 @@ import json
 from tqdm import tqdm
 import argparse
 import numpy as np
+import copy
 
 from federatedscope.core.configs.config import global_cfg
 from federatedscope.core.cmd_args import parse_args, parse_client_cfg
@@ -22,6 +23,11 @@ from federatedscope.llm.dataset.llm_dataset import DefaultToken, \
 # from federatedscope.llm.eval.eval_for_tldr.auto_j_vllm import evaluation
 
 logger = None
+
+
+def get_input_data(list_data_dict, w=5):
+    for left in tqdm(range(0, len(list_data_dict), w)):
+        yield list_data_dict[left:left + w]
 
 
 @torch.no_grad()
@@ -51,37 +57,38 @@ def _generate_best_of_n_dataset(gen_cfg, n=16):
                                    f'{fschatbot.curpfx}_summarization.txt')
     results_display = open(results_display, 'w')
 
-    for sample in tqdm(list_data_dict):
-        input_text = prompt.format_map(sample)
+    for input_data in get_input_data(list_data_dict):
+        input_texts = [prompt.format_map(data) for data in input_data]
         generate_kwargs = dict(
             top_p=1.0,
-            temperature=1.0,
+            temperature=0.7,
             do_sample=True,
-            max_new_tokens=60,
+            max_new_tokens=80,
             num_return_sequences=n,
         )
-        model_completions = fschatbot.generate(input_text, generate_kwargs)
+        model_completions = fschatbot.generate(input_texts, generate_kwargs)
 
-        results_display.write(f'Post:\n{sample["post"]}\n\n'
-                              f'Human summary:\n{sample["summary"]}\n\n')
-        summaries = []
-        for i, completion in enumerate(model_completions):
-            results_display.write(
-                f'Model-generated summary {i}:\n{completion}\n\n')
-            summaries.append(completion)
+        for i, sample in enumerate(input_data):
+            results_display.write(f'Post:\n{sample["post"]}\n\n'
+                                  f'Human summary:\n{sample["summary"]}\n\n')
+            summaries = []
+            for j, completion in enumerate(model_completions[i]):
+                results_display.write(
+                    f'Model-generated summary {j}:\n{completion}\n\n')
+                summaries.append(completion)
+            sample['summaries'] = summaries
 
-        sample['summaries'] = summaries
-
-        results_display.write('==========================\n\n')
-        results_display.flush()
+            results_display.write('==========================\n\n')
+            results_display.flush()
 
     return list_data_dict
 
 
 @torch.no_grad()
-def best_of_n_dataset(init_cfg, gen_cfg=None, n=16):
+def best_of_n_dataset(init_cfg, gen_cfg, n=16):
+    _, model_name = gen_cfg.model.type.split("@")[0].split('/', 1)
     gen_fp = os.path.join(init_cfg.data.root, 'reddit-tldr-comparison',
-                          f'reddit-tldr_test_{n}-gen.json')
+                          f'reddit-tldr_test_{n}-gen_{model_name}.json')
     if os.path.exists(gen_fp):
         # load the dataset
         list_data_dict = json.load(open(gen_fp, "r"))
@@ -89,7 +96,56 @@ def best_of_n_dataset(init_cfg, gen_cfg=None, n=16):
         # create the dataset
         list_data_dict = _generate_best_of_n_dataset(gen_cfg, n)
         json.dump(list_data_dict, open(gen_fp, "w"))
+
     return list_data_dict
+
+
+def best_of_n_dataset_eval(init_cfg, gen_cfg, n=16):
+    from auto_j_vllm import auto_j_eval_rating
+    _, model_name = gen_cfg.model.type.split("@")[0].split('/', 1)
+    file_path = os.path.join(init_cfg.data.root, 'reddit-tldr-comparison',
+                             f'reddit-tldr_test_{n}-gen_{model_name}.json')
+    if os.path.exists(file_path):
+        # load the dataset
+        list_data_dict = json.load(open(file_path, "r"))
+    else:
+        raise FileNotFoundError('Create the best_of_n dataset first')
+
+    dataset = []
+    for data in list_data_dict:
+        for idx, summary in enumerate(data['summaries']):
+            query = ("Summarize the following post\n\n"
+                     "Title: {title}\n\n"
+                     "Post: {post}").format_map(data)
+            record = {
+                'subreddit': data['subreddit'],
+                'title': data['title'],
+                'post': data['post'],
+                'response': summary,
+                'choice': idx,
+                'query': query
+            }
+            dataset.append(record)
+
+    with open(f'{file_path}_comments.txt', 'w') as comments_f, \
+            open(f'{file_path}_ratings.txt', 'w') as ratings_f:
+        auto_j_comments, auto_j_ratings = auto_j_eval_rating(dataset)
+        comments_f.write(str(auto_j_comments))
+        ratings_f.write(str(auto_j_ratings))
+
+    eval_results = {data["title"]: data for data in list_data_dict}
+    for sample, comment, rating in zip(dataset, auto_j_comments,
+                                       auto_j_ratings):
+        title = sample["title"]
+        if "autoj_eval_results" not in eval_results[title]:
+            eval_results[title]["autoj_eval_results"] = dict()
+        idx = sample["choice"]
+        eval_results[title]["autoj_eval_results"][idx] = {
+            "comment": comment,
+            "rating": rating
+        }
+    json.dump(list(eval_results.values()),
+              open(file_path + '_autoj_eval.json', 'w'))
 
 
 @torch.no_grad()
@@ -113,7 +169,7 @@ def cal_acc(logits, labels, choices):
 
 
 @torch.no_grad()
-def best_of_n(model, dataset, tokenizer, n=16, output_dir=None):
+def best_of_n(model, dataset, tokenizer, n=16):
     prompt = TLDR_PROMPT_DICT["summary_cmp"]
 
     choices = [tokenizer(f'{c}')['input_ids'][-1] for c in ['A', 'B']]
@@ -152,8 +208,6 @@ def best_of_n(model, dataset, tokenizer, n=16, output_dir=None):
             collate_fn=LLMDataCollator(tokenizer=tokenizer))
 
         predicted_indices = []
-        # results_display = open(os.path.join(output_dir,
-        #                                     f'iter_{i}.txt'), 'w')
         for idx, data_batch in enumerate(tqdm(dataloader)):
             input_ids = data_batch["input_ids"].to('cuda:0')
             labels = data_batch["labels"].to('cuda:0')
@@ -163,27 +217,6 @@ def best_of_n(model, dataset, tokenizer, n=16, output_dir=None):
                                                   choices)
             predicted_indices += predicted.tolist()
 
-            # results_display.write(f'{new_logits}\n\n')
-            # results_display.write(f'Input ID: {input_ids.shape} '
-            #                       f'Labels shape: {labels.shape} '
-            #                       f'Outputs shape: {outputs.logits.shape}\n')
-            # results_display.flush()
-
-            # sample = eval_dataset[idx]
-            # results_display.write(
-            # f'Post:\n{sample["post"]}\n\n'
-            # f'Summary A:\n{sample["output_A"]}\n\n'
-            # f'Summary B:\n{sample["output_B"]}\n\n'
-            # f'Model-choice: {chr(predicted[0] + ord("A"))}\n\n')
-            # results_display.write('==========================\n\n')
-            # results_display.flush()
-
-        # results_display.close()
-
-        # logger.info(f'Last better index: {list(last_better_idx)} '
-        #             f'({len(last_better_idx)})')
-        # logger.info(f'Predicted indices: {predicted_indices} '
-        #             f'({len(predicted_indices)})')
         predicted_indices = np.array(predicted_indices)
         last_better_idx[predicted_indices == 0] = i
 
@@ -380,7 +413,8 @@ def main():
 
     # best_of_n dataset
     dataset = best_of_n_dataset(init_cfg, gen_cfg, n=16)
-    # dataset = dataset[:500]
+    # # eval for the best_of_n dataset (vllm should be launched)
+    # best_of_n_dataset_eval(init_cfg, gen_cfg, n=16)
 
     # get model and tokenizer
     model_name, _ = init_cfg.model.type.split('@')
@@ -414,27 +448,22 @@ def main():
                             output_dir=init_cfg.outdir,
                             print_client_result=True)
     elif init_cfg.llm.adapter.count > 1:
-        # for i in range(init_cfg.llm.adapter.count):
-        #     model.set_active_adapter(f"Adapter_{i}")
-        #     model.eval()
-        #     adapter_result = best_of_n(model, dataset, tokenizer, n=16)
-        #     path = os.path.join(init_cfg.outdir,
-        #                         f'test_results_adapter_{i}.txt')
-        #     print_results(open(path, 'w'), dataset, adapter_result)
         results = best_of_n_multilora(model, dataset, tokenizer, n=16)
     elif init_cfg.trainer.type == "llmpporewardtrainer":
         results = best_of_n_by_reward(model, dataset, tokenizer, n=16)
     else:
-        results = best_of_n(model,
-                            dataset,
-                            tokenizer,
-                            n=16,
-                            output_dir=init_cfg.outdir)
+        results = best_of_n(model, dataset, tokenizer, n=16)
 
     path = os.path.join(init_cfg.outdir, 'test_results.txt')
     print_results(open(path, 'w'), dataset, results)
-    # evaluate best-of-n selection using auto_j
-    # evaluation(path)
+    # save the result to json file
+    result_list = copy.deepcopy(dataset)
+    for best_idx, sample in zip(results, result_list):
+        sample['select_index'] = best_idx
+        sample['select_summary'] = sample['summaries'][best_idx]
+        sample.pop('summaries')
+    json.dump(result_list,
+              open(os.path.join(init_cfg.outdir, 'test_results.json'), 'w'))
 
 
 if __name__ == "__main__":

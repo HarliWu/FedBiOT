@@ -260,6 +260,7 @@ if __name__ == "__main__":
                         type=int)
     args = parser.parse_args()
 
+    dataset = read_file(args.file)
     if args.clients:
         evaluation_multiple_clients(args.file, args.clients)
     elif args.pairwise:
