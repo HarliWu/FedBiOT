@@ -27,9 +27,9 @@ llm:
     use: True
     args: [ { 'adapter_package': 'peft', 'adapter_method': 'lora', 'r': 8, 'lora_alpha': 16, 'lora_dropout': 0.05 } ]
   reward_coeff: 0.1
-  grad_accum_step: 8
+  grad_accum_step: 16
 dataloader:
-  batch_size: 4
+  batch_size: 2
 model:
   type: 'NEU-HAI/Llama-2-7b-alpaca-cleaned@huggingface_llm'
 train:

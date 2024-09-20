@@ -26,9 +26,9 @@ llm:
   adapter:
     use: True
     args: [ { 'adapter_package': 'peft', 'adapter_method': 'lora', 'r': 8, 'lora_alpha': 16, 'lora_dropout': 0.05 } ]
-  grad_accum_step: 16
+  grad_accum_step: 8
 dataloader:
-  batch_size: 2
+  batch_size: 4
 model:
   type: 'mlabonne/Gemmalpaca-2B@huggingface_llm'
 train:

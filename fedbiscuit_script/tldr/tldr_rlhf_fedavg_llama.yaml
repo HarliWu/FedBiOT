@@ -17,7 +17,6 @@ data:
   splits: [0.9,0.09,0.01]
   splitter: 'meta'
 llm:
-  rlhf: True
   tok_len: 1024
   accelerator:
     use: True

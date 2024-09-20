@@ -17,7 +17,6 @@ data:
   splits: [0.99,0.09,0.01]
   splitter: 'meta'
 llm:
-  rlhf: True
   tok_len: 1024
   accelerator:
     use: True
@@ -26,9 +25,9 @@ llm:
   adapter:
     use: True
     args: [ { 'adapter_package': 'peft', 'adapter_method': 'lora', 'r': 8, 'lora_alpha': 16, 'lora_dropout': 0.05 } ]
-  grad_accum_step: 16
+  grad_accum_step: 8
 dataloader:
-  batch_size: 2
+  batch_size: 4
 model:
   type: 'NEU-HAI/Llama-2-7b-alpaca-cleaned@huggingface_llm'
 train:
