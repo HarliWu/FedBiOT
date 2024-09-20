@@ -187,7 +187,9 @@ def load_rlhf_dataset(data_root,
 
 def load_safe_dataset():
     ds = datasets.load_dataset("PKU-Alignment/PKU-SafeRLHF-prompt")
-    list_train_dict = list(ds['train']['prompt'])
+    list_train_dict = [{
+        'instruction': prompt
+    } for prompt in ds['train']['prompt']]
 
     return list_train_dict, None, None
 
@@ -343,3 +345,40 @@ def load_shp_cmp_dataset_by_choice(data_root,
     dataset = (train_dataset, val_dataset, test_dataset)
 
     return dataset
+
+
+def load_alpacafarm_human_for_eval(data_root, tokenizer):
+    token_name = os.path.basename(tokenizer.name_or_path)
+    path = os.path.join(data_root,
+                        f'{token_name}_alpacafarm_human_choice.pickle')
+    if os.path.exists(path):
+        with open(path, 'rb') as f:
+            test_dataset = pickle.load(f)
+    else:
+        ds = datasets.load_dataset("tatsu-lab/alpaca_farm",
+                                   "alpaca_human_preference")["preference"]
+        list_data_dict = []
+        for row in ds.iter(batch_size=1):
+            record = {
+                "instruction": row["instruction"][0],
+                "output_A": row["output_1"][0],
+                "output_B": row["output_2"][0],
+                "choice": {
+                    1: 'A',
+                    2: 'B'
+                }[row["preference"][0]],
+            }
+            if row["input"][0]:
+                record["instruction"] += f'\n\n{row["input"][0]}'
+            list_data_dict.append(record)
+
+        test_dataset = LLMDataset(list_data_dict,
+                                  tokenizer,
+                                  prompt_input=SHP_PROMPT_DICT['shp_cmp'],
+                                  prompt_no_input=SHP_PROMPT_DICT['shp_cmp'],
+                                  output_tag='choice')
+
+        with open(path, 'wb') as f:
+            pickle.dump(test_dataset, f)
+
+    return test_dataset
