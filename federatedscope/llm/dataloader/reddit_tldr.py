@@ -19,7 +19,8 @@ TLDR_PROMPT_DICT = {
         "Below is an instruction that describes a task, "
         "paired with an input that provides further context. "
         "Write a response that appropriately completes the request.\n\n"
-        "### Instruction:\nSummarize the following reddit post.\n\n"
+        "### Instruction:\nSummarize the following Reddit post in "
+        "a paragraph of 50 words or less.\n\n"
         "### Input:\n"
         "SUBREDDIT: r/{subreddit}\n"
         "TITLE: {title}\n"
@@ -45,7 +46,7 @@ TLDR_PROMPT_DICT = {
                 "a single capital letter, i.e., "
                 "\"A\" if RESPONSE A is better and more appropriate, "
                 "\"B\" if RESPONSE B is better and more appropriate.\n\n"
-                "### Instruction:\nSummarize the following reddit post.\n\n"
+                "### Instruction:\nSummarize the following Reddit post.\n\n"
                 "### Input:\n"
                 "SUBREDDIT: r/{subreddit}\n"
                 "TITLE: {title}\n"
@@ -261,7 +262,7 @@ def load_human_finetuning_dataset(data_root,
 
 
 def load_comparison_dataset(data_root, tokenizer, max_num_test=-1):
-    token_name = tokenizer.name_or_path
+    token_name = os.path.basename(tokenizer.name_or_path)
     train_set_path = os.path.join(data_root, f'{token_name}_train.pickle')
     val_set_path = os.path.join(data_root, f'{token_name}_val.pickle')
     test_set_path = os.path.join(data_root, f'{token_name}_test.pickle')
