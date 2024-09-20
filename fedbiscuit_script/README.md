@@ -5,7 +5,7 @@ In this project, we try to work on these projects:
 Reward model: 
 - Qwen 0.5B
 - Gemma 2B
-- LLaMA-2-7B
+- LLaMA-2-7B (tldr only)
 
 LLM: (finetuned with Alpaca dataset)
 - Gemma 2B (mlabonne/Gemmalpaca-2B)
