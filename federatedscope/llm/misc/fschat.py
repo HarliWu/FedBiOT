@@ -186,30 +186,31 @@ class FSChatBot(object):
         return response_tokens
 
     @torch.no_grad()
-    def generate(self, input_text, generate_kwargs={}):
+    def generate(self, input_texts: list[str], generate_kwargs={}):
         input_text_tokens = self.tokenizer(
-            input_text,
+            input_texts,
             padding=True,
             add_special_tokens=True,
             return_tensors="pt",
-        )
-        input_ids = input_text_tokens.input_ids.to('cuda:0')
-        attention_mask = input_text_tokens.attention_mask.to('cuda:0')
+        ).to("cuda:0")
 
-        output_ids = self.model.generate(input_ids=input_ids,
-                                         attention_mask=attention_mask,
+        output_ids = self.model.generate(**input_text_tokens,
                                          **generate_kwargs)
+        responses = self.tokenizer.batch_decode(output_ids,
+                                                skip_special_tokens=True,
+                                                ignore_tokenization_space=True)
 
-        response = []
-        for i in range(output_ids.shape[0]):
-            response.append(
-                self.tokenizer.decode(output_ids[i][input_ids.shape[1]:],
-                                      skip_special_tokens=True,
-                                      ignore_tokenization_space=True))
+        response_map = [[] for _ in input_texts]
+        for res in responses:
+            for idx, input_text in enumerate(input_texts):
+                if input_text in res:
+                    gen_res = res.replace(input_text, "").strip()
+                    response_map[idx].append(gen_res.replace("</s>", ""))
+                    # response_map[idx].append(
+                    #     " " + gen_res.replace("</s>", ""))
+                    break
 
-        if len(response) > 1:
-            return response
-        return response[0]
+        return response_map
 
     def clear(self):
         self.history = []
