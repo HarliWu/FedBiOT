@@ -110,7 +110,7 @@ class Generator:
         return response_tokens
 
 
-def get_tokenizer(model_name, cache_dir, tok_len=128):
+def get_tokenizer(model_name, cache_dir, tok_len=128, padding_side="right"):
     from transformers import AutoTokenizer, GPT2Tokenizer
 
     if model_name == 'CarperAI/openai_summarize_tldr_sft':
@@ -118,7 +118,7 @@ def get_tokenizer(model_name, cache_dir, tok_len=128):
             'gpt2',
             cache_dir=cache_dir,
             model_max_length=tok_len,
-            padding_side="right",
+            padding_side=padding_side,
             use_fast=False,
         )
     else:
@@ -126,7 +126,7 @@ def get_tokenizer(model_name, cache_dir, tok_len=128):
             model_name,
             cache_dir=cache_dir,
             model_max_length=tok_len,
-            padding_side="right",
+            padding_side=padding_side,
             use_fast=False,
         )
 
@@ -439,6 +439,25 @@ def load_llm_dataset(config=None, **kwargs):
         dataset = load_human_finetuning_dataset(data_root,
                                                 tokenizer,
                                                 max_num_test=1000)
+
+    elif dataset_name.lower() == 'alpaca_reddit-tldr-finetuning':
+        from federatedscope.llm.dataloader.reddit_tldr import \
+            load_human_finetuning_dataset
+        from torch.utils.data import ConcatDataset
+        data_root = os.path.join(config.data.root, 'reddit-tldr-comparison')
+        train_dataset, val_dataset, test_dataset = \
+            load_human_finetuning_dataset(data_root, tokenizer,
+                                          max_num_test=1000)
+        fp = os.path.join(config.data.root, 'alpaca_data.json')
+        download_url(
+            'https://raw.githubusercontent.com/tatsu-lab'
+            '/stanford_alpaca/'
+            '761dc5bfbdeeffa89b8bff5d038781a4055f796a/'
+            'alpaca_data.json', config.data.root)
+        list_data_dict = load_json(fp)
+        alpaca_dataset = LLMDataset(list_data_dict, tokenizer)
+        train_dataset = ConcatDataset([train_dataset, alpaca_dataset])
+        dataset = (train_dataset, val_dataset, test_dataset)
 
     elif dataset_name.lower() == 'reddit-tldr-rlhf':
         from federatedscope.llm.dataloader.reddit_tldr import \

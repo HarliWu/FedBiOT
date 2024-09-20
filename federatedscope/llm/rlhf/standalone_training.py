@@ -94,6 +94,11 @@ def get_rlhf_prompts_dataset(config):
     return (data_root, list_train_prompts, generation_prompt, selector_prompt)
 
 
+def get_input_data(list_data_dict, w=1):
+    for left in tqdm(range(0, len(list_data_dict), w)):
+        yield list_data_dict[left:left + w]
+
+
 class RLHF_finetuning:
     """
     Implementation of RLHF server
@@ -105,6 +110,7 @@ class RLHF_finetuning:
         config=None,
         selector_model=None,
         selector_tokenizer=None,
+        generator_tokenizer=None,
         device="cpu",
         **kwargs,
     ):
@@ -121,6 +127,7 @@ class RLHF_finetuning:
         self.tokenizer = tokenizer
         self.selector_model = selector_model
         self.selector_tokenizer = selector_tokenizer
+        self.generator_tokenizer = generator_tokenizer
         self.device = device
         self._monitor = Monitor(config, monitored_object=self)
 
@@ -145,7 +152,7 @@ class RLHF_finetuning:
             list_pairwise_data = self._generate_pairwise_data(
                 self.list_train_prompts,
                 self.model,
-                self.tokenizer,
+                self.generator_tokenizer,
                 self.generation_prompt,
                 max_new_tokens=self.config.llm.max_new_token,
                 num_completions=self.config.llm.num_completions)
@@ -244,44 +251,48 @@ class RLHF_finetuning:
                                 num_completions=2):
         generate_kwargs = dict(
             top_p=1.0,
-            temperature=1.0,
+            temperature=0.7,
             do_sample=True,
+            # early_stopping=True,
             max_new_tokens=max_new_tokens,
             num_return_sequences=max(2, num_completions),
         )
 
         new_list_data_dict = []
-        for data in tqdm(list_data_dict):
-            input_text = prompt.format_map(data)
+        for input_data in get_input_data(list_data_dict):
+            input_texts = [prompt.format_map(data) for data in input_data]
             input_text_tokens = tokenizer(
-                input_text,
+                input_texts,
                 padding=True,
                 add_special_tokens=True,
                 return_tensors="pt",
-            )
-            input_ids = input_text_tokens.input_ids.to("cuda:0")
-            attention_mask = input_text_tokens.attention_mask.to("cuda:0")
+            ).to("cuda:0")
 
-            output_ids = model.generate(input_ids=input_ids,
-                                        attention_mask=attention_mask,
-                                        **generate_kwargs)
+            output_ids = model.generate(**input_text_tokens, **generate_kwargs)
+            responses = tokenizer.batch_decode(output_ids,
+                                               skip_special_tokens=True,
+                                               ignore_tokenization_space=True)
 
-            response = []
-            for i in range(output_ids.shape[0]):
-                response.append(
-                    self.tokenizer.decode(
-                        output_ids[i][input_ids.shape[1]:],
-                        skip_special_tokens=True,
-                        ignore_tokenization_space=True,
-                    ))
-                if response[-1].startswith(" ") is False:
-                    response[-1] = " " + response[-1]
+            response_map = [[] for _ in input_data]
+            for res in responses:
+                for idx, input_text in enumerate(input_texts):
+                    if input_text in res:
+                        gen_res = res.replace(input_text, "").strip()
+                        response_map[idx].append(gen_res.replace("</s>", ""))
+                        # response_map[idx].append(
+                        #     " " + gen_res.replace("</s>", ""))
+                        break
 
-            for output_A, output_B in combinations(response, 2):
-                new_data = copy.deepcopy(data)
-                new_data["output_A"] = output_A
-                new_data["output_B"] = output_B
-                new_list_data_dict.append(new_data)
+            for i, data in enumerate(input_data):
+                logger.info(data)
+                for j, res in enumerate(response_map[i]):
+                    logger.info(f'Generated {j}-th response: {res}')
+
+                for output_A, output_B in combinations(response_map[i], 2):
+                    new_data = copy.deepcopy(data)
+                    new_data["output_A"] = output_A
+                    new_data["output_B"] = output_B
+                    new_list_data_dict.append(new_data)
 
         return new_list_data_dict
 
@@ -353,7 +364,7 @@ class RLHF_finetuning:
         list_train_dict = self._generate_pairwise_data(
             self.list_train_prompts,
             self.model,
-            self.tokenizer,
+            self.generator_tokenizer,
             self.generation_prompt,
             max_new_tokens=self.config.llm.max_new_token,
         )

@@ -72,6 +72,10 @@ if __name__ == '__main__':
     model = get_llm(init_cfg, device_map='auto')
     tokenizer, _ = get_tokenizer(model_name, init_cfg.data.root,
                                  init_cfg.llm.tok_len)
+    generator_tokenizer, _ = get_tokenizer(model_name,
+                                           init_cfg.data.root,
+                                           init_cfg.llm.tok_len,
+                                           padding_side="left")
 
     # start rlhf training
     gpu_manager = GPUManager(gpu_available=init_cfg.use_gpu,
@@ -82,4 +86,5 @@ if __name__ == '__main__':
                     init_cfg,
                     selector_model,
                     selector_tokenizer,
+                    generator_tokenizer,
                     device=_server_device).train()
