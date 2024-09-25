@@ -64,12 +64,13 @@ def main():
         }
         if record["input"] is None:
             record["output"] = fschatbot.generate(
-                PROMPT_DICT["prompt_no_input"].format_map(record),
+                [PROMPT_DICT["prompt_no_input"].format_map(record)],
                 generate_kwargs)
         else:
             record["output"] = fschatbot.generate(
-                PROMPT_DICT["prompt_input"].format_map(record),
+                [PROMPT_DICT["prompt_input"].format_map(record)],
                 generate_kwargs)
+        print(record)
         eval_data_dict.append(record)
 
     # save the evaluation result to a file
