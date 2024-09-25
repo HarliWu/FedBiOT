@@ -186,7 +186,9 @@ class FSChatBot(object):
         return response_tokens
 
     @torch.no_grad()
-    def generate(self, input_texts: list[str], generate_kwargs={}):
+    def generate(self,
+                 input_texts: list[str],
+                 generate_kwargs={}) -> list[list[str]]:
         input_text_tokens = self.tokenizer(
             input_texts,
             padding=True,

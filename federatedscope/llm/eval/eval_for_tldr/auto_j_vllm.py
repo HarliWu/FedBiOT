@@ -106,6 +106,7 @@ def read_file(path='test_results.txt'):
         'post': '',
         'response': '',
         'response_another': '',
+        'score': '',
         'choice': 0
     }
     for line in f.readlines():
@@ -129,6 +130,9 @@ def read_file(path='test_results.txt'):
         elif 'Human summary' in line:
             tag = 'response_another'
 
+        elif 'Score' in line:
+            tag = 'score'
+
         elif '=============' in line:
             # The end of the record, which should be
             # appended to the collection
@@ -146,6 +150,7 @@ def read_file(path='test_results.txt'):
                 'post': '',
                 'response': '',
                 'response_another': '',
+                'score': '',
                 'choice': 0
             }
 
@@ -266,4 +271,5 @@ if __name__ == "__main__":
     elif args.pairwise:
         eval_win_rate(args.file)
     else:
+        eval_win_rate(args.file)
         evaluation(args.file)

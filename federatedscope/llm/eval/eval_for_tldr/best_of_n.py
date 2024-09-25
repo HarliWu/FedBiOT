@@ -85,10 +85,14 @@ def _generate_best_of_n_dataset(gen_cfg, n=16):
 
 
 @torch.no_grad()
-def best_of_n_dataset(init_cfg, gen_cfg, n=16):
+def best_of_n_dataset(init_cfg, gen_cfg, n=16, load_eval_version=False):
     _, model_name = gen_cfg.model.type.split("@")[0].split('/', 1)
     gen_fp = os.path.join(init_cfg.data.root, 'reddit-tldr-comparison',
                           f'reddit-tldr_test_{n}-gen_{model_name}.json')
+    if load_eval_version and os.path.exists(gen_fp + '_autoj_eval.json'):
+        list_data_dict_eval = json.load(open(gen_fp + '_autoj_eval.json', 'r'))
+        return list_data_dict_eval
+
     if os.path.exists(gen_fp):
         # load the dataset
         list_data_dict = json.load(open(gen_fp, "r"))
@@ -172,7 +176,7 @@ def cal_acc(logits, labels, choices):
 def best_of_n(model, dataset, tokenizer, n=16):
     prompt = TLDR_PROMPT_DICT["summary_cmp"]
 
-    choices = [tokenizer(f'{c}')['input_ids'][-1] for c in ['A', 'B']]
+    choices = [tokenizer(f': {c}')['input_ids'][-1] for c in ['A', 'B']]
     # Correct idx is 0 means no changed, 1 means changed to the new index
     last_better_idx = np.array([0] * len(dataset))
     for i in range(1, n):
@@ -298,7 +302,7 @@ def best_of_n_local(model,
 def best_of_n_multilora(model, dataset, tokenizer, n=16):
     prompt = TLDR_PROMPT_DICT["summary_cmp"]
 
-    choices = [tokenizer(f'{c}')['input_ids'][-1] for c in ['A', 'B']]
+    choices = [tokenizer(f': {c}')['input_ids'][-1] for c in ['A', 'B']]
     # Correct idx is 0 means no changed, 1 means changed to the new index
     last_better_idx = np.array([0] * len(dataset))
     for i in range(1, n):
@@ -364,14 +368,29 @@ def best_of_n_multilora(model, dataset, tokenizer, n=16):
 
 
 def print_results(results_display, dataset, bsn_results):
+    auto_j_ratings = []
     for best_idx, sample in zip(bsn_results, dataset):
         results_display.write(f'Subreddit: r/{sample["subreddit"]}\n\n'
                               f'Title:\n{sample["title"]}\n\n'
                               f'Post:\n{sample["post"]}\n\n'
                               f'Best generated summary [[{best_idx}]]:\n'
                               f'{sample["summaries"][best_idx]}\n\n')
-        results_display.write('==========================\n\n')
-        results_display.flush()
+        try:
+            rating = sample["autoj_eval_results"][str(best_idx)]["rating"]
+            auto_j_ratings.append(rating)
+            results_display.write(
+                'Auto-J Comment:\n'
+                f'{sample["autoj_eval_results"][str(best_idx)]["comment"]}\n\n'
+            )
+            results_display.write(f'Auto-J Rating: {rating}\n\n')
+        finally:
+            results_display.write('==========================\n\n')
+            results_display.flush()
+
+    if len(auto_j_ratings) != 0:
+        results_display.write(f'{auto_j_ratings}\n\n')
+        results_display.write(
+            f'Average Auto-J Rating: {np.mean(auto_j_ratings)}\n\n')
 
 
 @torch.no_grad()
@@ -412,8 +431,11 @@ def main():
     init_cfg.freeze()
 
     # best_of_n dataset
-    dataset = best_of_n_dataset(init_cfg, gen_cfg, n=16)
-    # # eval for the best_of_n dataset (vllm should be launched)
+    dataset = best_of_n_dataset(init_cfg,
+                                gen_cfg,
+                                n=16,
+                                load_eval_version=True)
+    # eval for the best_of_n dataset (vllm should be launched)
     # best_of_n_dataset_eval(init_cfg, gen_cfg, n=16)
 
     # get model and tokenizer
@@ -459,7 +481,7 @@ def main():
     # save the result to json file
     result_list = copy.deepcopy(dataset)
     for best_idx, sample in zip(results, result_list):
-        sample['select_index'] = best_idx
+        sample['select_index'] = str(best_idx)
         sample['select_summary'] = sample['summaries'][best_idx]
         sample.pop('summaries')
     json.dump(result_list,
