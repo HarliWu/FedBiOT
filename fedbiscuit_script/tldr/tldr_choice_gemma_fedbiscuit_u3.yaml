@@ -7,7 +7,7 @@ federate:
   client_num: 53
   sample_client_num: 5
   total_round_num: 500
-  save_to: "checkpoints/tldr_choice_gemma_fedbiscuit_u3.ckpt"
+  save_to: "checkpoints/final_tldr_choice_gemma_fedbiscuit_u3.ckpt"
   ignore_weight: True
   save_freq: 50
   share_local_model: True
