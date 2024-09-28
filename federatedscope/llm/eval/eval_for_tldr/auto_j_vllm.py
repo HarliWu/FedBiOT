@@ -257,6 +257,10 @@ if __name__ == "__main__":
                         dest='file',
                         help='Path to model-generated outputs',
                         type=str)
+    parser.add_argument('--model-outputs-directory',
+                        dest='dir',
+                        help='Directory to model-generated outputs',
+                        type=str)
     parser.add_argument('--clients',
                         dest='clients',
                         help='Selected clients for evaluation',
@@ -265,11 +269,22 @@ if __name__ == "__main__":
                         type=int)
     args = parser.parse_args()
 
-    dataset = read_file(args.file)
+    # dataset = read_file(args.file)
     if args.clients:
         evaluation_multiple_clients(args.file, args.clients)
     elif args.pairwise:
         eval_win_rate(args.file)
+    elif args.dir is not None:
+        for base_dir, _, files in os.walk(args.dir):
+            print(base_dir, files)
+            for filename in files:
+                if filename.endswith('_summarization.txt'):
+                    file_path = os.path.join(base_dir, filename)
+                    print(f'>>>> I am running for {file_path}')
+                    if (filename + '_autoj_eval_win.txt' not in files):
+                        eval_win_rate(file_path)
+                    if (filename + '_autoj_eval.txt' not in files):
+                        evaluation(file_path)
     else:
         eval_win_rate(args.file)
         evaluation(args.file)
